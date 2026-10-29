@@ -245,3 +245,23 @@ h2 {
     padding: 20px;
   }
 }
+
+#preview {
+  z-index: 11;
+}
+.preview-body {
+  margin-top: 12px;
+}
+.preview-body img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+.preview-body iframe {
+  width: 100%;
+  height: 60vh;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}

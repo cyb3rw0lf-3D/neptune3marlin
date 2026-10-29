@@ -115,7 +115,7 @@ async function main(): Promise<void> {
       rep.type = 'button';
       rep.textContent = 'Report card';
       rep.addEventListener('click', () =>
-        download(`report-${slug(profile.name)}-${slug(run.lessonTitle)}-${run.mode}.html`, reportHtml(profile, run)),
+        saveOrPreview(`report-${slug(profile.name)}-${slug(run.lessonTitle)}-${run.mode}.html`, reportHtml(profile, run)),
       );
       buttons.appendChild(rep);
       if (run.mode === 'test' && run.passed) {
@@ -125,7 +125,7 @@ async function main(): Promise<void> {
         cert.textContent = 'Certificate';
         cert.addEventListener('click', async () => {
           const png = await certificatePng(profile, run.lessonTitle, run.score, run.date);
-          if (png) download(`certificate-${slug(profile.name)}-${slug(run.lessonTitle)}.png`, png);
+          if (png) saveOrPreview(`certificate-${slug(profile.name)}-${slug(run.lessonTitle)}.png`, png);
         });
         buttons.appendChild(cert);
       }
@@ -133,6 +133,38 @@ async function main(): Promise<void> {
       list.appendChild(row);
     }
   };
+  // Embedded pages (such as a shared preview) can't download files, so show them instead.
+  const preview = $('preview');
+  const previewBody = $('preview-body');
+  const framed = (() => {
+    try {
+      return window.self !== window.top;
+    } catch {
+      return true;
+    }
+  })();
+  const saveOrPreview = (name: string, data: Blob | string) => {
+    if (!framed) {
+      download(name, data);
+      return;
+    }
+    previewBody.replaceChildren();
+    if (typeof data === 'string') {
+      const frame = document.createElement('iframe');
+      frame.title = 'Report card';
+      frame.srcdoc = data;
+      previewBody.appendChild(frame);
+    } else {
+      const img = document.createElement('img');
+      img.alt = 'Certificate of completion';
+      img.src = URL.createObjectURL(data);
+      previewBody.appendChild(img);
+    }
+    preview.hidden = false;
+  };
+  $('close-preview').addEventListener('click', () => {
+    preview.hidden = true;
+  });
   studentSelect.addEventListener('change', renderRecords);
   $('open-records').addEventListener('click', () => {
     renderRecords();
