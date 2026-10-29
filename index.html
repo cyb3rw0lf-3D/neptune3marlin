@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="Service Bay VR: an educational WebXR game that teaches automotive service procedures." />
+    <meta name="theme-color" content="#121c24" />
+    <title>Service Bay VR</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231fa6a6'/%3E%3Cpath d='M18 44l16-16m-4-10a10 10 0 1 0 14 14l-6-2-2-6z' stroke='%23fff' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <div id="overlay" class="overlay">
+      <main class="card" aria-labelledby="title">
+        <p class="eyebrow">Training Center</p>
+        <h1 id="title">Service Bay VR</h1>
+        <p class="lede">Learn real automotive service procedures in a virtual shop: oil changes, tire service and more, guided by Valkyrie the shop drone.</p>
+        <div class="actions">
+          <button id="enter-vr" class="btn primary" type="button" hidden>Enter VR</button>
+          <button id="play-screen" class="btn" type="button">Play on this screen</button>
+          <button id="open-records" class="btn ghost" type="button">Records &amp; certificates</button>
+        </div>
+        <p id="vr-note" class="note"></p>
+        <details class="help">
+          <summary>Controls</summary>
+          <ul>
+            <li><strong>VR controllers:</strong> point and pull the trigger to use or click. Grip grabs a tool or puts it back. Twist your wrist while holding the trigger to turn wrenches. Push the left stick forward to aim a teleport and let go to jump. Right stick snap turns.</li>
+            <li><strong>Hands:</strong> pinch to click, grab and use. Point at the blue floor rings to move.</li>
+            <li><strong>Mouse:</strong> click to grab or use, and hold the click for wrench and hold jobs. Drag empty space to look, WASD to walk, and click the blue floor rings to jump to work spots. Mouse wheel sets the torque wrench. Q puts a tool back, H gives a hint in Practice, Esc pauses.</li>
+            <li><strong>Touch:</strong> tap to use, drag to look, tap the blue rings to move.</li>
+          </ul>
+        </details>
+      </main>
+    </div>
+
+    <div id="records" class="overlay" hidden>
+      <section class="card wide" aria-labelledby="records-title">
+        <div class="row">
+          <h2 id="records-title">Records &amp; certificates</h2>
+          <button id="close-records" class="btn ghost" type="button">Close</button>
+        </div>
+        <label class="field">Student
+          <select id="records-student"></select>
+        </label>
+        <div id="records-list" class="list"></div>
+      </section>
+    </div>
+
+    <div id="preview" class="overlay" hidden>
+      <section class="card wide" aria-labelledby="preview-title">
+        <div class="row">
+          <h2 id="preview-title">Preview</h2>
+          <button id="close-preview" class="btn ghost" type="button">Close</button>
+        </div>
+        <p class="note">Downloads are blocked here. Open the game's own web address to save files.</p>
+        <div id="preview-body" class="preview-body"></div>
+      </section>
+    </div>
+
+    <div id="hudbar" class="hudbar" hidden>
+      <span>Esc: pause · H: hint · Q: put tool back · Wheel: set torque</span>
+      <button id="exit-screen" class="btn small ghost" type="button">Exit</button>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
