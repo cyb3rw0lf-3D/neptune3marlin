@@ -1,4 +1,7 @@
 import type { LessonDef, LessonId, VehicleId } from '../engine/types';
+import { battery } from './battery';
+import { brakes } from './brakes';
+import { inspection } from './inspection';
 import { oilChange } from './oil-change';
 import { tireService } from './tire-service';
 
@@ -22,24 +25,9 @@ function comingSoon(id: LessonId, title: string, summary: string, vehicles: Vehi
 export const LESSONS: LessonDef[] = [
   oilChange as LessonDef,
   tireService as LessonDef,
-  comingSoon(
-    'brakes',
-    'Brake Inspection & Pads',
-    'Measure pads and rotors, then replace the front pads safely on jack stands.',
-    ['sedan', 'pickup', 'ev'],
-  ),
-  comingSoon(
-    'battery',
-    'Battery & Jump-Start',
-    'Test, disconnect in the safe order, replace a battery, and jump-start a car.',
-    ['sedan', 'pickup'],
-  ),
-  comingSoon(
-    'inspection',
-    'Multi-Point Inspection',
-    'Check fluids, belts, hoses, filters, wipers and lights, and report honestly.',
-    ['sedan', 'pickup', 'ev'],
-  ),
+  brakes as LessonDef,
+  battery as LessonDef,
+  inspection as LessonDef,
   comingSoon('obd2', 'OBD-II Diagnostics', 'Read check-engine codes and track a code back to the real cause.', [
     'sedan',
     'pickup',

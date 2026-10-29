@@ -3,7 +3,7 @@
  * for display, so a value can never disagree between the two systems.
  */
 export type UnitSystem = 'us' | 'metric';
-export type Quantity = 'torque' | 'pressure' | 'volume' | 'tread' | 'length' | 'voltage';
+export type Quantity = 'torque' | 'pressure' | 'volume' | 'tread' | 'length' | 'voltage' | 'thickness';
 
 interface UnitInfo {
   us: string;
@@ -25,6 +25,8 @@ export const UNITS: Record<Quantity, UnitInfo> = {
   tread: { us: '/32 in', metric: 'mm', factor: 0.79375, usDecimals: 0, metricDecimals: 1, usStep: 1, metricStep: 0.5 },
   length: { us: 'in', metric: 'mm', factor: 25.4, usDecimals: 3, metricDecimals: 2, usStep: 0.001, metricStep: 0.01 },
   voltage: { us: 'V', metric: 'V', factor: 1, usDecimals: 1, metricDecimals: 1, usStep: 0.1, metricStep: 0.1 },
+  // Brake pad lining is measured in millimeters in US shops too.
+  thickness: { us: 'mm', metric: 'mm', factor: 1, usDecimals: 1, metricDecimals: 1, usStep: 0.5, metricStep: 0.5 },
 };
 
 export function toDisplay(quantity: Quantity, usValue: number, system: UnitSystem): number {
@@ -55,7 +57,7 @@ export function format(quantity: Quantity, usValue: number, system: UnitSystem):
 
 /** Format in the chosen system with the other system in brackets, for teaching specs. */
 export function formatBoth(quantity: Quantity, usValue: number, primary: UnitSystem): string {
-  if (quantity === 'voltage') return format(quantity, usValue, primary);
+  if (UNITS[quantity].us === UNITS[quantity].metric) return format(quantity, usValue, primary);
   const other: UnitSystem = primary === 'us' ? 'metric' : 'us';
   return `${format(quantity, usValue, primary)} (${format(quantity, usValue, other)})`;
 }

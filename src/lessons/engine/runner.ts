@@ -27,6 +27,8 @@ export type Verdict =
       lessonDone: boolean;
       effects: Effect[];
       reading?: Reading;
+      /** The targets are done and the step now waits for its inspection tag. */
+      tagPending?: boolean;
       /** Set when the step completed but with a recorded mistake (e.g. overfilled). */
       mistake?: { def: MistakeDef; record: MistakeRecord };
     };
@@ -85,6 +87,12 @@ export class LessonRunner {
     return this.doneTargets.get(stepId)?.has(target) ?? false;
   }
 
+  /** True when the current step's targets are done and it waits for a green/yellow/red call. */
+  get awaitingTag(): boolean {
+    const step = this.current;
+    return !!step?.tag && step.targets.every((t) => this.isTargetDone(step.id, t));
+  }
+
   /** Targets of the current step that still need doing, in the order expected. */
   remainingTargets(): TargetId[] {
     const step = this.current;
@@ -97,6 +105,7 @@ export class LessonRunner {
   attempt(item: ItemId, target: TargetId): Verdict {
     const step = this.current;
     if (!step) return { kind: 'ignored', reason: 'finished' };
+    if (this.awaitingTag) return { kind: 'ignored', reason: 'choice-pending' };
 
     if (step.targets.includes(target)) {
       if (this.isTargetDone(step.id, target)) return { kind: 'ignored', reason: 'done' };
@@ -170,12 +179,13 @@ export class LessonRunner {
     return this.markDone(step, target, fillMistake);
   }
 
-  /** Answer the current step's multiple-choice question. */
+  /** Answer the current step's multiple-choice question, or its inspection tag. */
   answer(optionIndex: number): Verdict {
     const step = this.current;
-    if (!step?.choice) return { kind: 'ignored', reason: 'unrelated' };
-    if (optionIndex !== step.choice.correct) return this.mistake(step, step.choice.wrong);
-    return this.markDone(step, null);
+    const q = step?.choice ?? (this.awaitingTag ? step?.tag : undefined);
+    if (!step || !q) return { kind: 'ignored', reason: 'unrelated' };
+    if (optionIndex !== q.correct) return this.mistake(step, q.wrongByOption?.[optionIndex] ?? q.wrong);
+    return this.markDone(step, null, undefined, true);
   }
 
   /** The item the current step needs for a target (for highlighting the right tool). */
@@ -195,6 +205,7 @@ export class LessonRunner {
     step: StepDef,
     target: TargetId | null,
     mistake?: { def: MistakeDef; record: MistakeRecord },
+    answered = false,
   ): Verdict {
     const done = this.doneTargets.get(step.id) as Set<TargetId>;
     const effects: Effect[] = [];
@@ -202,14 +213,16 @@ export class LessonRunner {
       done.add(target);
       for (const e of step.effects ?? []) effects.push({ fx: e.fx, arg: e.arg ?? target });
     }
-    const stepDone = step.targets.every((t) => done.has(t));
+    const targetsDone = step.targets.every((t) => done.has(t));
+    const tagPending = !!step.tag && targetsDone && !answered;
+    const stepDone = targetsDone && !tagPending;
     if (stepDone) {
       for (const e of step.stepEffects ?? []) effects.push({ fx: e.fx, arg: e.arg ?? target ?? undefined });
       this.index++;
       if (this.finished) this.endedAt = this.now();
     }
     const reading = target !== null ? step.readings?.[target] : undefined;
-    return { kind: 'done', step, target, stepDone, lessonDone: this.finished, effects, reading, mistake };
+    return { kind: 'done', step, target, stepDone, lessonDone: this.finished, effects, reading, tagPending, mistake };
   }
 
   private mistake(step: StepDef, def: MistakeDef): Verdict {

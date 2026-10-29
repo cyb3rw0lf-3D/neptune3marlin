@@ -59,6 +59,9 @@ export class Markers {
   private readonly label: Panel;
   private labelText = '';
   private labelAnchor: Object3D | null = null;
+  /** Green / yellow / red call for an inspected part, shown beside it. */
+  readonly tag: Panel;
+  private tagAnchor: Object3D | null = null;
 
   constructor() {
     for (let i = 0; i < 6; i++) {
@@ -86,6 +89,10 @@ export class Markers {
     this.reading.mesh.userData.pick = undefined;
     this.reading.mesh.visible = false;
     this.root.add(this.reading.mesh);
+
+    this.tag = new Panel('tag', 0.62, 0.42, 1000);
+    this.tag.mesh.visible = false;
+    this.root.add(this.tag.mesh);
 
     this.label = new Panel('label', 0.5, 0.075, 1000);
     this.label.mesh.userData.pick = undefined;
@@ -145,6 +152,45 @@ export class Markers {
     });
   }
 
+  /** Shows the inspection tag popup: what was found, and three calls to pick from. */
+  showTag(anchor: Object3D, title: string, finding: string, options: string[], onPick: (i: number) => void): void {
+    this.hideReading();
+    this.tagAnchor = anchor;
+    this.tag.mesh.visible = true;
+    const swatch = [UI.good, UI.warn, UI.bad];
+    this.tag.setDraw((p) => {
+      p.background(22);
+      p.text(title, 24, 16, { size: 26, color: UI.muted, maxWidth: p.widthPx - 48 });
+      p.paragraph(finding, 24, 52, p.widthPx - 48, { size: 28, bold: true, maxLines: 3 });
+      options.forEach((label, i) => {
+        const y = 168 + i * 82;
+        p.button(`tag-${i}`, label, 24, y, p.widthPx - 48, 70, () => onPick(i), { align: 'left', size: 28 });
+        // Color plus shape (circle, triangle, square) so the call reads without color vision.
+        const ctx = p.ctx;
+        const cx = p.widthPx - 70;
+        const cy = y + 35;
+        ctx.fillStyle = swatch[i] ?? UI.muted;
+        ctx.beginPath();
+        if (i === 0) ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+        else if (i === 1) {
+          ctx.moveTo(cx, cy - 18);
+          ctx.lineTo(cx + 18, cy + 14);
+          ctx.lineTo(cx - 18, cy + 14);
+        } else ctx.rect(cx - 15, cy - 15, 30, 30);
+        ctx.fill();
+      });
+    });
+  }
+
+  hideTag(): void {
+    this.tagAnchor = null;
+    this.tag.mesh.visible = false;
+  }
+
+  get tagOpen(): boolean {
+    return this.tag.mesh.visible;
+  }
+
   hideReading(): void {
     this.readingAnchor = null;
     this.reading.mesh.visible = false;
@@ -162,6 +208,14 @@ export class Markers {
       this.reading.mesh.position.y += 0.22;
       this.reading.mesh.lookAt(cam);
       if (this.readingTimer <= 0) this.hideReading();
+    }
+    if (this.tagAnchor) {
+      this.tagAnchor.getWorldPosition(this.tag.mesh.position);
+      // Float above the part and a little toward the viewer.
+      const toCam = cam.clone().sub(this.tag.mesh.position).setY(0).normalize().multiplyScalar(0.15);
+      this.tag.mesh.position.add(toCam);
+      this.tag.mesh.position.y += 0.32;
+      this.tag.mesh.lookAt(cam);
     }
     if (this.labelAnchor && this.label.mesh.visible) {
       this.labelAnchor.getWorldPosition(this.label.mesh.position);

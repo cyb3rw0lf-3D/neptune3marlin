@@ -16,6 +16,9 @@ function mistakesOf(step: StepDef): MistakeDef[] {
     step.orderMistake,
     step.wrongItem,
     step.choice?.wrong,
+    step.tag?.wrong,
+    ...Object.values(step.choice?.wrongByOption ?? {}),
+    ...Object.values(step.tag?.wrongByOption ?? {}),
     step.measure?.over,
     step.measure?.under,
     ...Object.values(step.wrongItems ?? {}),
@@ -34,9 +37,15 @@ const runs = LESSONS.filter((l) => l.available).flatMap((lesson) =>
 );
 
 describe('lesson content', () => {
-  it('has all eight lessons, with stage 1 lessons available', () => {
+  it('has all eight lessons, with stage 1 and 2 lessons available', () => {
     expect(LESSONS).toHaveLength(8);
-    expect(LESSONS.filter((l) => l.available).map((l) => l.id)).toEqual(['oil-change', 'tire-service']);
+    expect(LESSONS.filter((l) => l.available).map((l) => l.id)).toEqual([
+      'oil-change',
+      'tire-service',
+      'brakes',
+      'battery',
+      'inspection',
+    ]);
   });
 
   it.each(runs.map((r) => [`${r.lesson.id} ${r.vehicle.id} ${r.units} seed ${r.seed}`, r] as const))(
@@ -53,6 +62,9 @@ describe('lesson content', () => {
         if (step.choice) {
           expect(step.targets).toEqual([]);
           expect(step.choice.correct).toBeLessThan(step.choice.options.length);
+        } else if (step.tag) {
+          expect(step.targets).toHaveLength(1);
+          expect(step.tag.correct).toBeLessThan(step.tag.options.length);
         } else {
           expect(step.targets.length, `${step.id} has no targets`).toBeGreaterThan(0);
         }
@@ -86,6 +98,10 @@ describe('lesson content', () => {
         const step = r.current as StepDef;
         if (step.choice) {
           r.answer(step.choice.correct);
+          continue;
+        }
+        if (r.awaitingTag && step.tag) {
+          r.answer(step.tag.correct);
           continue;
         }
         const target = r.remainingTargets()[0] as string;

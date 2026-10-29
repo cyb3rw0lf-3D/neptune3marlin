@@ -169,3 +169,51 @@ test('tracked hands connect as pointers', async ({ page }) => {
   const info = await call<XrInfo>(page, 'xr');
   expect(info.pointers.map((p) => p.kind)).toEqual(['hand', 'hand']);
 });
+
+async function setTrigger(page: Page, value: number): Promise<void> {
+  await page.evaluate((v) => {
+    const d = (
+      window as unknown as {
+        __xrDevice: { controllers: { right: { updateButtonValue(id: string, v: number): void } } };
+      }
+    ).__xrDevice;
+    d.controllers.right.updateButtonValue('trigger', v);
+  }, value);
+  await page.waitForTimeout(250);
+}
+
+async function moveRightController(page: Page, y: number): Promise<void> {
+  await page.evaluate((y) => {
+    const d = (
+      window as unknown as {
+        __xrDevice: {
+          controllers: { right: { position: { x: number; z: number; set(x: number, y: number, z: number): void } } };
+        };
+      }
+    ).__xrDevice;
+    const p = d.controllers.right.position;
+    p.set(p.x, y, p.z);
+  }, y);
+  await page.waitForTimeout(150);
+}
+
+test('the floor jack pumps with real up-and-down controller strokes', async ({ page }) => {
+  await enterVR(page);
+  await call(page, 'createProfile', 'Vee');
+  await call(page, 'startLesson', 'brakes', 'practice', 'sedan', 1);
+  await expect.poll(async () => (await state(page)).dialogButtons).toContain('begin');
+  await call(page, 'clickDialog', 'begin');
+  await call(page, 'autoplay', false, 'jack-raise');
+  await call(page, 'teleport', 'jack');
+  await page.waitForTimeout(400);
+  const handle = await call<{ x: number; y: number; z: number }>(page, 'targetWorld', 'jack-handle');
+  await aimAt(page, handle);
+  // Squeeze the trigger on the handle (one stroke), then pump the hand down and up.
+  await setTrigger(page, 1);
+  for (let i = 0; i < 6; i++) {
+    await moveRightController(page, 1.22);
+    await moveRightController(page, 1.4);
+  }
+  await setTrigger(page, 0);
+  await expect.poll(async () => (await state(page)).step).toBe('stands');
+});

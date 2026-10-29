@@ -4,20 +4,19 @@ import {
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshLambertMaterial,
   Object3D,
   Quaternion,
-  Shape,
   Vector3,
 } from 'three';
 import { boxCollider, type Registry, sphereCollider } from '../interaction/registry';
+import type { TargetId, VehicleId } from '../lessons/engine/types';
 import { build } from '../world/lowpoly';
 import { C } from '../world/palette';
+import { type BodyContext, buildPickupBody, buildSedanBody } from './bodies';
+import { LAYOUTS, type V3, type VehicleLayout } from './layout';
 import { type VehicleSpec, WHEEL_NAMES, WHEELS, type WheelPos } from './specs';
-
-const WHEEL_R = 0.33;
-const TIRE_W = 0.215;
-const LUG_RADIUS = 0.065;
 
 export interface WheelAssembly {
   pos: WheelPos;
@@ -37,247 +36,299 @@ export interface WheelPart {
   group: Group;
 }
 
+/** Front brake parts that a lesson moves around. */
+export interface FrontBrake {
+  caliper: Group;
+  /** Where the caliper sits when bolted on (hub-local). */
+  caliperHome: Vector3;
+  /** Where it hangs from the S-hook (hub-local). */
+  caliperHung: Vector3;
+  pads: Mesh[];
+}
+
 const glassMat = new MeshLambertMaterial({ color: C.glass, transparent: true, opacity: 0.55 });
+const FRONT = ['FL', 'FR'] as const;
+
+const v3 = (a: V3) => new Vector3(a[0], a[1], a[2]);
+
+export interface VehicleOptions {
+  /** Body paint, for the donor car in the jump-start lesson. */
+  paint?: number;
+  trim?: number;
+}
 
 /**
- * A serviceable car: a root that rides on the lift, a hinged hood, removable
- * wheels and named anchors for every part a lesson can target.
+ * A serviceable vehicle: a root that rides on the lift, a hinged hood,
+ * removable wheels, front brakes, a removable battery and named anchors for
+ * every part a lesson can target. The body shape and every anchor position
+ * come from the vehicle's layout.
  */
 export class Vehicle {
   readonly root = new Group();
   readonly spec: VehicleSpec;
+  readonly layout: VehicleLayout;
   readonly hoodPivot = new Group();
   readonly wheels = {} as Record<WheelPos, WheelAssembly>;
   readonly wheelParts = {} as Record<WheelPos, WheelPart>;
+  readonly brakes = {} as Record<'FL' | 'FR', FrontBrake>;
   readonly anchors = new Map<string, Object3D>();
+  /** Solid meshes that stop pointer rays. */
+  readonly occluders: Mesh[] = [];
   /** Small green torque marks painted on lugs once torqued. */
   readonly torqueMarks: InstancedMesh;
-  /** Visual pieces that lessons show or hide. */
+  /** Visual pieces that lessons show, hide or move. */
   readonly drainPlug: Mesh;
   readonly oilFilter: Mesh;
   readonly fillCap: Mesh;
   readonly dipstick: Mesh;
-  readonly liftPoints: Record<WheelPos, Vector3> = {
-    FL: new Vector3(1.02, 0.28, -0.74),
-    FR: new Vector3(1.02, 0.28, 0.74),
-    RL: new Vector3(-1.12, 0.28, -0.74),
-    RR: new Vector3(-1.12, 0.28, 0.74),
-  };
+  readonly battery: Group;
+  readonly batteryHome: Vector3;
+  readonly corrosion: Mesh;
+  readonly cableEnds: { pos: Mesh; neg: Mesh };
+  readonly lamps: Mesh[] = [];
+  readonly fillCapHome: Vector3;
+  readonly dipstickHome: Vector3;
+  readonly liftPoints: Record<WheelPos, Vector3>;
+  /** Target ids this vehicle registered, so they can be removed on a swap. */
+  private targetIds: TargetId[] = [];
 
-  constructor(spec: VehicleSpec) {
+  constructor(spec: VehicleSpec, options: VehicleOptions = {}) {
     this.spec = spec;
+    const layout = LAYOUTS[spec.id as Exclude<VehicleId, 'ev'>];
+    if (!layout) throw new Error(`No body for ${spec.name} yet`);
+    this.layout = layout;
     this.root.name = `vehicle:${spec.id}`;
-    this.buildBody();
+    this.liftPoints = {
+      FL: v3(layout.liftPoints.FL),
+      FR: v3(layout.liftPoints.FR),
+      RL: v3(layout.liftPoints.RL),
+      RR: v3(layout.liftPoints.RR),
+    };
+
+    const ctx: BodyContext = {
+      root: this.root,
+      hoodPivot: this.hoodPivot,
+      layout,
+      paint: options.paint ?? C.carBody,
+      trim: options.trim ?? C.carBodyDark,
+      glass: glassMat,
+      add: (mesh, solid = true) => {
+        this.root.add(mesh);
+        if (solid) this.occluders.push(mesh);
+        return mesh;
+      },
+    };
+    if (spec.id === 'pickup') buildPickupBody(ctx);
+    else buildSedanBody(ctx);
+    this.buildHood(ctx.paint);
     this.buildEngineBay();
     this.buildUnderside();
-    this.buildInterior();
     for (const pos of WHEELS) this.buildWheel(pos);
+    for (const pos of FRONT) this.buildFrontBrake(pos);
+    this.buildLamps();
 
-    this.drainPlug = this.named(build().cyl(0.02, 0.02, 0.03, 6, C.steel).mesh('drain-plug'), 'drain-plug-visual');
-    this.drainPlug.position.set(1.78, 0.115, 0.08);
+    const at = layout.at;
+    this.drainPlug = build().cyl(0.02, 0.02, 0.03, 6, C.steel).mesh('drain-plug-visual');
+    this.drainPlug.position.copy(v3(at.drainPlug));
     this.root.add(this.drainPlug);
 
     this.oilFilter = build()
       .cyl(0.047, 0.047, 0.11, 10, C.oilFilter)
       .cyl(0.03, 0.03, 0.012, 10, C.darkSteel, { p: [0, 0.06, 0] })
       .mesh('oil-filter');
-    this.oilFilter.position.set(1.5, 0.165, -0.26);
+    this.oilFilter.position.copy(v3(at.filter));
     this.root.add(this.oilFilter);
 
+    this.fillCapHome = v3(at.fillCap);
     this.fillCap = build().cyl(0.036, 0.036, 0.03, 10, C.oilCap).mesh('fill-cap');
-    this.fillCap.position.set(1.72, 0.875, 0.18);
+    this.fillCap.position.copy(this.fillCapHome);
     this.root.add(this.fillCap);
 
+    this.dipstickHome = v3(at.dipstick);
     this.dipstick = build()
       .torus(0.025, 0.007, C.oilCap, { r: [0, Math.PI / 2, 0] }, 4, 10)
       .cyl(0.004, 0.004, 0.5, 4, C.steel, { p: [0, -0.27, 0] })
       .mesh('dipstick');
-    this.dipstick.position.set(1.95, 0.885, -0.1);
+    this.dipstick.position.copy(this.dipstickHome);
     this.root.add(this.dipstick);
 
+    // Battery: one group so it can come out of the car as a whole.
+    const [bw, bh, bd] = at.batterySize;
+    this.batteryHome = v3(at.battery);
+    this.battery = new Group();
+    this.battery.name = 'battery';
+    this.battery.add(
+      build()
+        .box(bw, bh, bd, C.black)
+        .box(bw * 0.98, 0.012, bd * 0.98, 0x3a3f44, { p: [0, bh / 2, 0] })
+        .cyl(0.015, 0.015, 0.03, 6, C.safetyRed, { p: [-bw * 0.2, bh / 2 + 0.015, bd * 0.3] })
+        .cyl(0.015, 0.015, 0.03, 6, C.darkSteel, { p: [bw * 0.25, bh / 2 + 0.015, bd * 0.3] })
+        .box(0.05, 0.02, 0.04, C.white, { p: [0, bh / 2 + 0.008, -bd * 0.2] })
+        .mesh('battery-case'),
+    );
+    this.battery.position.copy(this.batteryHome);
+    this.root.add(this.battery);
+
+    // Cable ends sit on the posts; they swing aside when disconnected.
+    const posPost = this.postPosition('pos');
+    const negPost = this.postPosition('neg');
+    this.cableEnds = {
+      pos: build().box(0.04, 0.03, 0.05, C.safetyRed).mesh('cable-pos'),
+      neg: build().box(0.04, 0.03, 0.05, C.black).mesh('cable-neg'),
+    };
+    this.cableEnds.pos.position.copy(posPost);
+    this.cableEnds.neg.position.copy(negPost);
+    this.root.add(this.cableEnds.pos, this.cableEnds.neg);
+
+    this.corrosion = build()
+      .box(0.05, 0.025, 0.05, 0xd7e8c8, { p: [posPost.x, posPost.y + 0.012, posPost.z] })
+      .box(0.035, 0.02, 0.035, 0x9fd3b0, { p: [posPost.x + 0.012, posPost.y + 0.025, posPost.z + 0.01] })
+      .mesh('corrosion');
+    this.corrosion.visible = false;
+    this.root.add(this.corrosion);
+
+    this.buildAnchors();
+
     const markGeo = build().box(0.006, 0.02, 0.006, C.green).geometry();
-    this.torqueMarks = new InstancedMesh(markGeo, glassMat.clone(), 4 * 8);
-    (this.torqueMarks.material as MeshLambertMaterial).transparent = false;
-    (this.torqueMarks.material as MeshLambertMaterial).color = new Color(C.green);
+    this.torqueMarks = new InstancedMesh(markGeo, new MeshLambertMaterial({ color: new Color(C.green) }), 4 * 8);
     this.torqueMarks.count = 0;
     this.root.add(this.torqueMarks);
   }
 
-  private named<T extends Object3D>(o: T, name: string): T {
-    o.name = name;
-    return o;
+  /** Battery post top, vehicle-local. */
+  postPosition(which: 'pos' | 'neg'): Vector3 {
+    const [bw, bh, bd] = this.layout.at.batterySize;
+    const b = this.layout.at.battery;
+    const x = which === 'pos' ? -bw * 0.2 : bw * 0.25;
+    return new Vector3(b[0] + x, b[1] + bh / 2 + 0.035, b[2] + bd * 0.3);
   }
 
-  private anchor(name: string, x: number, y: number, z: number, parent: Object3D = this.root): Object3D {
+  private anchor(name: string, p: V3 | Vector3, parent: Object3D = this.root): Object3D {
     const a = new Object3D();
     a.name = `anchor:${name}`;
-    a.position.set(x, y, z);
+    if (p instanceof Vector3) a.position.copy(p);
+    else a.position.set(p[0], p[1], p[2]);
     parent.add(a);
     this.anchors.set(name, a);
     return a;
   }
 
-  private buildBody(): void {
-    const s = new Shape();
-    s.moveTo(-2.25, 0.3);
-    s.lineTo(-1.75, 0.3);
-    s.absarc(-1.35, 0.33, 0.4, Math.PI, 0, true);
-    s.lineTo(0.95, 0.3);
-    s.absarc(1.35, 0.33, 0.4, Math.PI, 0, true);
-    s.lineTo(2.2, 0.3);
-    s.lineTo(2.3, 0.45);
-    s.lineTo(2.3, 0.63);
-    s.lineTo(2.2, 0.72);
-    s.lineTo(1.32, 0.72);
-    s.lineTo(1.25, 0.98);
-    s.lineTo(-1.32, 1.0);
-    s.lineTo(-1.4, 0.97);
-    s.lineTo(-2.18, 0.95);
-    s.lineTo(-2.28, 0.8);
-    s.lineTo(-2.3, 0.5);
-    s.lineTo(-2.25, 0.3);
-
-    const body = build()
-      .extrude(s, 1.66, C.carBody, {}, 0.03)
-      // fenders forming the engine bay walls
-      .box(0.9, 0.13, 0.1, C.carBody, { p: [1.76, 0.785, 0.79] })
-      .box(0.9, 0.13, 0.1, C.carBody, { p: [1.76, 0.785, -0.79] })
-      // roof and pillars
-      .box(1.24, 0.05, 1.5, C.carBody, { p: [-0.2, 1.405, 0] })
-      .box(0.07, 0.4, 0.05, C.carBody, { p: [-0.15, 1.2, 0.76] })
-      .box(0.07, 0.4, 0.05, C.carBody, { p: [-0.15, 1.2, -0.76] })
-      // bumpers, grille, lights
-      .box(0.08, 0.2, 1.66, C.black, { p: [2.29, 0.45, 0] })
-      .box(0.08, 0.2, 1.66, C.black, { p: [-2.29, 0.45, 0] })
-      .box(0.04, 0.1, 0.8, C.black, { p: [2.3, 0.63, 0] })
-      .box(0.05, 0.07, 0.32, C.headlight, { p: [2.27, 0.68, 0.58] })
-      .box(0.05, 0.07, 0.32, C.headlight, { p: [2.27, 0.68, -0.58] })
-      .box(0.05, 0.08, 0.34, C.taillight, { p: [-2.29, 0.84, 0.58] })
-      .box(0.05, 0.08, 0.34, C.taillight, { p: [-2.29, 0.84, -0.58] })
-      // mirrors and door seams
-      .box(0.12, 0.08, 0.12, C.carBodyDark, { p: [1.05, 1.03, 0.9] })
-      .box(0.12, 0.08, 0.12, C.carBodyDark, { p: [1.05, 1.03, -0.9] })
-      .box(0.01, 0.6, 0.01, C.carBodyDark, { p: [-0.15, 0.7, 0.865] })
-      .box(0.01, 0.6, 0.01, C.carBodyDark, { p: [-0.15, 0.7, -0.865] })
-      .box(0.01, 0.6, 0.01, C.carBodyDark, { p: [1.0, 0.7, 0.865] })
-      .box(0.01, 0.6, 0.01, C.carBodyDark, { p: [1.0, 0.7, -0.865] })
-      // lift point triangles on the rocker panels
-      .cyl(0.04, 0.0, 0.05, 3, C.safetyYellow, { p: [1.02, 0.31, 0.83] })
-      .cyl(0.04, 0.0, 0.05, 3, C.safetyYellow, { p: [1.02, 0.31, -0.83] })
-      .cyl(0.04, 0.0, 0.05, 3, C.safetyYellow, { p: [-1.12, 0.31, 0.83] })
-      .cyl(0.04, 0.0, 0.05, 3, C.safetyYellow, { p: [-1.12, 0.31, -0.83] })
-      // tire placard sticker on the driver-side B-pillar
-      .box(0.1, 0.07, 0.004, C.white, { p: [-0.15, 0.86, -0.868] })
-      .mesh('body');
-    this.root.add(body);
-
-    const gh = new Shape();
-    gh.moveTo(-1.3, 0.98);
-    gh.lineTo(1.22, 0.98);
-    gh.lineTo(0.4, 1.4);
-    gh.lineTo(-0.8, 1.4);
-    gh.lineTo(-1.3, 0.98);
-    const glass = new Mesh(build().extrude(gh, 1.52, C.glass).geometry(), glassMat);
-    glass.name = 'glass';
-    glass.renderOrder = 2;
-    this.root.add(glass);
-
-    // Hood hinged at the cowl.
-    this.hoodPivot.position.set(1.27, 0.97, 0);
+  private buildHood(paint: number): void {
+    const h = this.layout.hood;
+    this.hoodPivot.position.set(h.pivot[0], h.pivot[1], h.pivot[2]);
     const hood = build()
-      .box(0.96, 0.035, 1.6, C.carBody, { p: [0.47, -0.06, 0], r: [0, 0, -0.14] })
+      .box(h.length, 0.035, h.width, paint, { p: [h.length / 2, -0.03, 0], r: [0, 0, h.slope] })
       .mesh('hood');
     this.hoodPivot.add(hood);
+    this.occluders.push(hood);
     this.root.add(this.hoodPivot);
-    this.anchor('hood-latch', 2.2, 0.8, 0);
-    this.anchor('placard', -0.15, 0.86, -0.88);
   }
 
+  /** Battery, fluid reservoirs, air box, belt and hose, placed from the layout. */
   private buildEngineBay(): void {
-    const bay = build()
-      .box(0.5, 0.12, 0.72, C.engine, { p: [1.72, 0.76, 0] })
-      .box(0.42, 0.05, 0.6, C.darkSteel, { p: [1.72, 0.845, 0] })
-      .box(0.24, 0.16, 0.17, C.black, { p: [1.97, 0.79, -0.52] })
-      .cyl(0.015, 0.015, 0.03, 6, C.safetyRed, { p: [1.92, 0.885, -0.47] })
-      .cyl(0.015, 0.015, 0.03, 6, C.black, { p: [2.03, 0.885, -0.47] })
-      .box(0.14, 0.14, 0.12, C.white, { p: [2.02, 0.79, 0.52] })
-      .cyl(0.025, 0.025, 0.02, 8, C.black, { p: [2.02, 0.87, 0.52] })
-      .box(0.26, 0.13, 0.28, C.black, { p: [1.45, 0.78, 0.5] })
-      .box(0.1, 0.1, 0.1, C.white, { p: [1.42, 0.8, -0.55] })
-      .cyl(0.02, 0.02, 0.02, 8, C.safetyYellow, { p: [1.42, 0.86, -0.55] })
-      .mesh('engine-bay');
-    this.root.add(bay);
-    this.anchor('fill-cap', 1.72, 0.88, 0.18);
-    this.anchor('dipstick', 1.95, 0.9, -0.1);
+    const at = this.layout.at;
+    const b = build()
+      // coolant overflow reservoir with its level marks
+      .box(0.14, 0.14, 0.12, C.white, { p: at.coolant })
+      .box(0.141, 0.006, 0.121, C.black, { p: [at.coolant[0], at.coolant[1] + 0.03, at.coolant[2]] })
+      .box(0.141, 0.006, 0.121, C.black, { p: [at.coolant[0], at.coolant[1] - 0.03, at.coolant[2]] })
+      .cyl(0.025, 0.025, 0.02, 8, C.black, { p: [at.coolant[0], at.coolant[1] + 0.08, at.coolant[2]] })
+      // radiator cap (pressure cap on the radiator neck)
+      .cyl(0.03, 0.03, 0.025, 10, C.chrome, { p: at.radiatorCap })
+      .cyl(0.02, 0.02, 0.05, 8, C.darkSteel, {
+        p: [at.radiatorCap[0], at.radiatorCap[1] - 0.04, at.radiatorCap[2]],
+      })
+      // washer fluid filler (blue cap)
+      .cyl(0.024, 0.024, 0.02, 8, 0x2f6fd6, { p: at.washer })
+      .cyl(0.016, 0.016, 0.08, 6, C.black, { p: [at.washer[0], at.washer[1] - 0.05, at.washer[2]] })
+      // brake fluid reservoir (yellow cap)
+      .box(0.1, 0.1, 0.1, C.white, { p: at.brakeFluid })
+      .cyl(0.02, 0.02, 0.02, 8, C.safetyYellow, {
+        p: [at.brakeFluid[0], at.brakeFluid[1] + 0.06, at.brakeFluid[2]],
+      })
+      // air filter box
+      .box(0.26, 0.13, 0.28, C.black, { p: at.airFilter })
+      .box(0.2, 0.012, 0.02, C.chrome, { p: [at.airFilter[0], at.airFilter[1] + 0.07, at.airFilter[2] - 0.12] })
+      // serpentine belt around two pulleys
+      .torus(0.05, 0.008, C.black, { p: [at.belt[0] - 0.06, at.belt[1], at.belt[2]] }, 4, 12)
+      .torus(0.035, 0.008, C.black, { p: [at.belt[0] + 0.07, at.belt[1] + 0.03, at.belt[2]] }, 4, 12)
+      .box(0.13, 0.012, 0.012, C.black, { p: [at.belt[0], at.belt[1] + 0.045, at.belt[2]], r: [0, 0, 0.2] })
+      .box(0.13, 0.012, 0.012, C.black, { p: [at.belt[0], at.belt[1] - 0.035, at.belt[2]], r: [0, 0, 0.2] })
+      // upper radiator hose
+      .cyl(0.022, 0.022, 0.24, 8, C.black, { p: at.upperHose, r: [0, 0, Math.PI / 2] })
+      // bare-metal engine lifting eye: the jump-start ground point
+      .box(0.05, 0.05, 0.012, C.chrome, { p: at.engineGround })
+      // wiper arms on the cowl
+      .box(0.03, 0.015, 0.55, C.black, { p: at.wipers, r: [0, 0.25, 0] })
+      .box(0.03, 0.015, 0.55, C.black, { p: [at.wipers[0], at.wipers[1], -at.wipers[2]], r: [0, 0.25, 0] });
+    this.root.add(b.mesh('engine-bay'));
   }
 
   private buildUnderside(): void {
-    const under = build()
-      .box(4.2, 0.08, 1.5, C.darkSteel, { p: [0, 0.27, 0] })
-      .box(0.42, 0.08, 0.44, C.darkSteel, { p: [1.65, 0.17, 0] })
-      .cyl(0.03, 0.03, 3.6, 6, C.steel, { p: [-0.45, 0.19, 0.35], r: [0, 0, Math.PI / 2] })
-      .box(0.5, 0.13, 0.3, C.steel, { p: [-1.6, 0.19, 0.35] })
-      .box(0.25, 0.06, 0.6, C.black, { p: [1.3, 0.21, 0] })
-      .mesh('underside');
-    this.root.add(under);
-    this.anchor('drain-plug', 1.78, 0.11, 0.08);
-    this.anchor('filter', 1.5, 0.15, -0.26);
-    for (const pos of WHEELS) {
-      const p = this.liftPoints[pos];
-      this.anchor(`lift-point-${pos}`, p.x, p.y, p.z);
-    }
-  }
-
-  private buildInterior(): void {
-    const inside = build()
-      .box(0.35, 0.18, 1.4, C.black, { p: [1.0, 0.93, 0] })
-      .torus(0.17, 0.02, C.black, { p: [0.78, 1.02, -0.38], r: [0, Math.PI / 2, 0.35] }, 4, 14)
-      .box(0.5, 0.5, 0.5, C.darkSteel, { p: [0.2, 0.75, -0.38] })
-      .box(0.5, 0.5, 0.5, C.darkSteel, { p: [0.2, 0.75, 0.38] })
-      .box(0.5, 0.45, 1.3, C.darkSteel, { p: [-0.9, 0.75, 0] })
-      .cyl(0.02, 0.02, 0.02, 8, C.safetyRed, { p: [0.92, 1.03, -0.12], r: [0, 0, Math.PI / 2] })
-      .mesh('interior');
-    this.root.add(inside);
-    this.anchor('start-button', 0.92, 1.03, -0.12);
+    const at = this.layout.at;
+    const pan = build()
+      .box(0.42, 0.08, 0.44, C.darkSteel, { p: [at.oilPan[0], at.oilPan[1] + 0.04, at.oilPan[2] + 0.05] })
+      .mesh('oil-pan');
+    this.root.add(pan);
+    this.occluders.push(pan);
   }
 
   private wheelCenter(pos: WheelPos): Vector3 {
-    const x = pos.startsWith('F') ? 1.35 : -1.35;
-    const z = pos.endsWith('R') ? 0.76 : -0.76;
-    return new Vector3(x, WHEEL_R, z);
+    const L = this.layout;
+    const x = pos.startsWith('F') ? L.wheelX.front : L.wheelX.rear;
+    const z = pos.endsWith('R') ? L.trackZ : -L.trackZ;
+    return new Vector3(x, L.wheelR, z);
+  }
+
+  private rotorR(): number {
+    return this.layout.rimR * 0.72;
   }
 
   private buildWheel(pos: WheelPos): void {
+    const L = this.layout;
     const side: 1 | -1 = pos.endsWith('R') ? 1 : -1;
+    const lugsN = this.spec.tires.lugsPerWheel;
     const hub = new Group();
     hub.name = `hub:${pos}`;
     hub.position.copy(this.wheelCenter(pos));
     this.root.add(hub);
 
-    // Brake rotor, caliper and hub flange stay on the car when the wheel comes off.
+    // Rotor, hub flange, caliper bracket and wheel studs stay on the car when the wheel comes off.
+    const r = this.rotorR();
     const brakes = build()
-      .cyl(0.155, 0.155, 0.025, 14, C.steel, { p: [0, 0, side * 0.0], r: [Math.PI / 2, 0, 0] })
+      .cyl(r, r, 0.025, 14, C.steel, { r: [Math.PI / 2, 0, 0] })
       .cyl(0.075, 0.075, 0.05, 10, C.darkSteel, { p: [0, 0, side * 0.03], r: [Math.PI / 2, 0, 0] })
-      .box(0.1, 0.12, 0.07, C.safetyRed, { p: [-0.12, 0.06, -side * 0.005] });
-    for (let i = 0; i < this.spec.tires.lugsPerWheel; i++) {
-      const a = (i / this.spec.tires.lugsPerWheel) * Math.PI * 2;
+      .box(0.05, 0.16, 0.05, C.darkSteel, { p: [-r * 0.82 - 0.03, r * 0.36, -side * 0.02], r: [0, 0, -0.4] });
+    for (let i = 0; i < lugsN; i++) {
+      const a = (i / lugsN) * Math.PI * 2;
       brakes.cyl(0.006, 0.006, 0.05, 5, C.chrome, {
-        p: [Math.cos(a) * LUG_RADIUS, Math.sin(a) * LUG_RADIUS, side * 0.07],
+        p: [Math.cos(a) * L.lugRadius, Math.sin(a) * L.lugRadius, side * 0.07],
         r: [Math.PI / 2, 0, 0],
       });
     }
-    hub.add(brakes.mesh(`brakes:${pos}`));
+    // Coil spring and strut above the hub, with the caliper S-hook hanging from it.
+    if (pos.startsWith('F')) {
+      brakes
+        .cyl(0.07, 0.07, 0.22, 8, C.safetyRed, { p: [0.02, L.wheelR * 1.05, -side * 0.12] })
+        .cyl(0.025, 0.025, 0.3, 6, C.darkSteel, { p: [0.02, L.wheelR * 0.7, -side * 0.12] })
+        .torus(0.02, 0.004, C.chrome, { p: [0.09, L.wheelR * 0.82, -side * 0.08], r: [Math.PI / 2, 0, 0] }, 4, 8)
+        .box(0.006, 0.07, 0.006, C.chrome, { p: [0.09, L.wheelR * 0.76, -side * 0.08] });
+    }
+    const brakeMesh = brakes.mesh(`brakes:${pos}`);
+    hub.add(brakeMesh);
+    this.occluders.push(brakeMesh);
 
     // Lug nuts belong to the hub (they go on whichever wheel is mounted).
     const lugs = build();
     const lugAnchors: Object3D[] = [];
-    for (let i = 0; i < this.spec.tires.lugsPerWheel; i++) {
-      const a = (i / this.spec.tires.lugsPerWheel) * Math.PI * 2;
-      const lx = Math.cos(a) * LUG_RADIUS;
-      const ly = Math.sin(a) * LUG_RADIUS;
-      lugs.cyl(0.013, 0.013, 0.026, 6, C.chrome, { p: [lx, ly, side * 0.125], r: [Math.PI / 2, 0, 0] });
+    const face = L.tireW / 2;
+    for (let i = 0; i < lugsN; i++) {
+      const a = (i / lugsN) * Math.PI * 2;
+      const lx = Math.cos(a) * L.lugRadius;
+      const ly = Math.sin(a) * L.lugRadius;
+      lugs.cyl(0.013, 0.013, 0.026, 6, C.chrome, { p: [lx, ly, side * (face + 0.018)], r: [Math.PI / 2, 0, 0] });
       const la = new Object3D();
-      la.position.set(lx, ly, side * 0.14);
+      la.position.set(lx, ly, side * (face + 0.033));
       la.name = `anchor:lug-${pos}-${i}`;
       hub.add(la);
       lugAnchors.push(la);
@@ -290,31 +341,153 @@ export class Vehicle {
 
     const wheel = new Group();
     wheel.name = `wheel:${pos}`;
+    const R = L.wheelR;
+    const W = L.tireW;
     const tire = build()
-      .cyl(WHEEL_R, WHEEL_R, TIRE_W, 18, C.rubber, { r: [Math.PI / 2, 0, 0] })
-      .cyl(0.215, 0.215, TIRE_W + 0.008, 14, C.chrome, { r: [Math.PI / 2, 0, 0] })
-      .cyl(0.17, 0.17, TIRE_W + 0.012, 5, C.steel, { r: [Math.PI / 2, 0, 0] })
-      .cyl(0.045, 0.045, TIRE_W + 0.02, 8, C.darkSteel, { r: [Math.PI / 2, 0, 0] })
+      .cyl(R, R, W, 18, C.rubber, { r: [Math.PI / 2, 0, 0] })
+      .cyl(L.rimR, L.rimR, W + 0.008, 14, C.chrome, { r: [Math.PI / 2, 0, 0] })
+      .cyl(L.rimR * 0.8, L.rimR * 0.8, W + 0.012, lugsN, C.steel, { r: [Math.PI / 2, 0, 0] })
+      .cyl(0.045, 0.045, W + 0.02, 8, C.darkSteel, { r: [Math.PI / 2, 0, 0] })
       // valve stems on both faces so the wheel looks right on either side after rotation
-      .cyl(0.006, 0.006, 0.03, 4, C.black, { p: [0.2, -0.04, 0.115], r: [Math.PI / 2, 0, 0] })
-      .cyl(0.006, 0.006, 0.03, 4, C.black, { p: [0.2, -0.04, -0.115], r: [Math.PI / 2, 0, 0] })
+      .cyl(0.006, 0.006, 0.03, 4, C.black, { p: [L.rimR * 0.93, -0.04, face + 0.008], r: [Math.PI / 2, 0, 0] })
+      .cyl(0.006, 0.006, 0.03, 4, C.black, { p: [L.rimR * 0.93, -0.04, -face - 0.008], r: [Math.PI / 2, 0, 0] })
       .mesh(`tire:${pos}`);
     wheel.add(tire);
     hub.add(wheel);
+    this.occluders.push(tire);
     this.wheelParts[pos] = { origin: pos, group: wheel };
 
-    this.anchor(`valve-${pos}`, 0.2, -0.04, side * 0.13, hub);
-    this.anchor(`tread-${pos}`, 0, WHEEL_R, 0, hub).position.set(0.12, 0.29, side * 0.05);
-    this.anchor(`lugs-${pos}`, 0, 0, side * 0.14, hub);
-    this.anchor(`hub-${pos}`, 0, 0, side * 0.1, hub);
+    this.anchor(`valve-${pos}`, [L.rimR * 0.93, -0.04, side * (face + 0.02)], hub);
+    this.anchor(`tread-${pos}`, [0.12, R - 0.04, side * 0.05], hub);
+    this.anchor(`lugs-${pos}`, [0, 0, side * (face + 0.033)], hub);
+    this.anchor(`hub-${pos}`, [0, 0, side * (face - 0.008)], hub);
+  }
+
+  private buildFrontBrake(pos: 'FL' | 'FR'): void {
+    const hub = this.wheels[pos].hub;
+    const side = this.wheels[pos].side;
+    const L = this.layout;
+    const r = this.rotorR();
+    const caliperHome = new Vector3(-r * 0.82, r * 0.36, 0);
+    const caliperHung = new Vector3(0.09, L.wheelR * 0.62, -side * 0.08);
+    const caliper = new Group();
+    caliper.name = `caliper:${pos}`;
+    caliper.position.copy(caliperHome);
+    caliper.rotation.z = -0.4;
+    caliper.add(
+      build()
+        .box(0.075, 0.13, 0.03, C.safetyRed, { p: [0, 0, side * 0.032] })
+        .box(0.075, 0.13, 0.03, C.safetyRed, { p: [0, 0, -side * 0.034] })
+        .box(0.04, 0.13, 0.1, C.safetyRed, { p: [-0.035, 0, -side * 0.0] })
+        .cyl(0.022, 0.022, 0.012, 8, C.chrome, { p: [0, 0, -side * 0.018], r: [Math.PI / 2, 0, 0] })
+        .mesh(`caliper-body:${pos}`),
+    );
+    hub.add(caliper);
+
+    // Pads stay in the bracket when the caliper comes off.
+    const pads: Mesh[] = [];
+    for (const z of [side * 0.022, -side * 0.022]) {
+      const pad = build()
+        .box(0.05, 0.11, 0.008, C.darkSteel, { p: [0, 0, z + Math.sign(z) * 0.006] })
+        .box(0.046, 0.1, 0.006, 0x6b5a4a, { p: [0, 0, z] })
+        .mesh(`pad:${pos}`);
+      pad.position.copy(caliperHome);
+      pad.rotation.z = -0.4;
+      hub.add(pad);
+      pads.push(pad);
+    }
+
+    // The hose runs from the caliper up into the wheel well.
+    const hose = build()
+      .cyl(0.008, 0.008, 0.2, 5, C.black, { p: [0, 0.1, 0], r: [0, 0, 0.3] })
+      .mesh(`brake-hose:${pos}`);
+    hose.position.set(caliperHome.x - 0.02, caliperHome.y + 0.05, -side * 0.04);
+    hub.add(hose);
+
+    this.brakes[pos] = { caliper, caliperHome, caliperHung, pads };
+
+    this.anchor(`pad-outer-${pos}`, [caliperHome.x + 0.015, caliperHome.y - 0.02, side * 0.035], hub);
+    this.anchor(`pad-inner-${pos}`, [caliperHome.x + 0.03, caliperHome.y + 0.04, -side * 0.012], hub);
+    this.anchor(`rotor-${pos}`, [r * 0.45, -r * 0.45, side * 0.015], hub);
+    this.anchor(`caliper-bolts-${pos}`, [caliperHome.x - 0.055, caliperHome.y + 0.02, side * 0.03], hub);
+    this.anchor(`caliper-bracket-${pos}`, [caliperHome.x, caliperHome.y, side * 0.02], hub);
+    this.anchor(`pad-clips-${pos}`, [caliperHome.x + 0.03, caliperHome.y + 0.075, side * 0.02], hub);
+    this.anchor(`caliper-hook-${pos}`, [0.09, L.wheelR * 0.76, -side * 0.06], hub);
+    this.anchor(`brake-hose-${pos}`, [caliperHome.x + 0.01, caliperHome.y + 0.13, -side * 0.01], hub);
+    this.anchor(`caliper-piston-${pos}`, [0, 0, side * 0.06], caliper);
+  }
+
+  private buildLamps(): void {
+    const at = this.layout.at;
+    const on = new MeshBasicMaterial({ color: 0xfffbe0 });
+    const brake = new MeshBasicMaterial({ color: 0xff3b2b });
+    const defs: [string, typeof at.headlights, number, MeshBasicMaterial][] = [
+      ['lamp-HL', at.headlights, -1, on],
+      ['lamp-HR', at.headlights, 1, on],
+      ['lamp-TL', at.taillights, -1, brake],
+      ['lamp-TR', at.taillights, 1, brake],
+    ];
+    for (const [name, l, side, mat] of defs) {
+      const [w, h, d] = l.size;
+      const m = new Mesh(build().box(w, h, d, C.white).geometry(), mat);
+      m.name = name;
+      m.position.set(l.x + Math.sign(l.x) * 0.006, l.y, side * l.z);
+      m.visible = false;
+      this.root.add(m);
+      this.lamps.push(m);
+    }
+  }
+
+  private buildAnchors(): void {
+    const L = this.layout;
+    const at = L.at;
+    this.anchor('hood-latch', at.hoodLatch);
+    this.anchor('placard', at.placard);
+    this.anchor('fill-cap', [at.fillCap[0], at.fillCap[1] + 0.005, at.fillCap[2]]);
+    this.anchor('dipstick', [at.dipstick[0], at.dipstick[1] + 0.015, at.dipstick[2]]);
+    this.anchor('drain-plug', [at.drainPlug[0], at.drainPlug[1] - 0.005, at.drainPlug[2]]);
+    this.anchor('filter', [at.filter[0], at.filter[1] - 0.015, at.filter[2]]);
+    this.anchor('oil-pan', at.oilPan);
+    this.anchor('start-button', at.startButton);
+    this.anchor('light-switch', at.lightSwitch);
+    this.anchor('driver-seat', at.driverSeat);
+    for (const pos of WHEELS) this.anchor(`lift-point-${pos}`, L.liftPoints[pos]);
+    this.anchor('jack-point', L.jackPoint);
+    this.anchor('stand-point-FL', L.standPoints.FL);
+    this.anchor('stand-point-FR', L.standPoints.FR);
+    this.anchor('car-shake', [L.front - 0.02, L.wheelR + 0.3, -L.halfWidth + 0.25]);
+    // Battery
+    const [, bh] = at.batterySize;
+    const posPost = this.postPosition('pos');
+    const negPost = this.postPosition('neg');
+    this.anchor('batt-pos', posPost);
+    this.anchor('batt-neg', negPost);
+    this.anchor('battery-posts', posPost.clone().add(negPost).multiplyScalar(0.5));
+    this.anchor('battery', [at.battery[0], at.battery[1] + bh / 2, at.battery[2]]);
+    this.anchor('batt-holddown', [at.battery[0], at.battery[1] + bh / 2 + 0.01, at.battery[2] - 0.05]);
+    this.anchor('cable-pos', posPost.clone().add(new Vector3(-0.03, 0.06, 0.08)));
+    this.anchor('cable-neg', negPost.clone().add(new Vector3(0.03, 0.06, 0.08)));
+    this.anchor('engine-ground', at.engineGround);
+    // Inspection points
+    this.anchor('coolant-reservoir', at.coolant);
+    this.anchor('radiator-cap', [at.radiatorCap[0], at.radiatorCap[1] + 0.02, at.radiatorCap[2]]);
+    this.anchor('washer-cap', at.washer);
+    this.anchor('brake-reservoir', [at.brakeFluid[0], at.brakeFluid[1] + 0.03, at.brakeFluid[2]]);
+    this.anchor('air-filter', [at.airFilter[0], at.airFilter[1] + 0.07, at.airFilter[2]]);
+    this.anchor('drive-belt', at.belt);
+    this.anchor('upper-hose', at.upperHose);
+    this.anchor('wipers', at.wipers);
+    this.anchor('leak-check', at.leakCheck);
   }
 
   /** Registers every vehicle target with the interaction registry. */
   registerTargets(reg: Registry): void {
+    const L = this.layout;
     const t = (id: string, label: string, anchorName: string, col: Mesh) => {
       const a = this.anchors.get(anchorName);
       if (!a) throw new Error(`Missing anchor ${anchorName}`);
       reg.addTarget(id, label, a, col);
+      this.targetIds.push(id);
     };
     t('hood-latch', 'Hood latch', 'hood-latch', boxCollider(0.2, 0.15, 0.9));
     t('fill-cap', 'Oil fill cap', 'fill-cap', sphereCollider(0.06));
@@ -323,8 +496,37 @@ export class Vehicle {
     t('drain-plug', 'Oil drain plug', 'drain-plug', sphereCollider(0.07));
     t('filter', 'Oil filter', 'filter', sphereCollider(0.09));
     t('filter-mount', 'Oil filter mount', 'filter', sphereCollider(0.1));
+    t('oil-pan', 'Oil pan', 'oil-pan', boxCollider(0.4, 0.1, 0.4));
     t('start-button', 'Engine start button', 'start-button', sphereCollider(0.08));
+    t('light-switch', 'Headlight switch', 'light-switch', sphereCollider(0.07));
+    t('driver-seat', "Driver's seat (brake pedal)", 'driver-seat', boxCollider(0.3, 0.25, 0.12));
     t('placard', 'Tire pressure placard', 'placard', boxCollider(0.16, 0.12, 0.04));
+    // The jacking point sits deep under the car, so the target is the floor lane in front of the
+    // bumper where the jack rolls in. The halo still marks the real point.
+    const lane = boxCollider(0.6, 0.2, 0.45);
+    lane.position.set(L.front + 0.12 - L.jackPoint[0], 0.1 - L.jackPoint[1], -L.jackPoint[2]);
+    t('jack-point', 'Front jacking point (roll the jack in here)', 'jack-point', lane);
+    t('stand-point-FL', 'Jack stand point, front left', 'stand-point-FL', boxCollider(0.25, 0.16, 0.25));
+    t('stand-point-FR', 'Jack stand point, front right', 'stand-point-FR', boxCollider(0.25, 0.16, 0.25));
+    t('car-shake', 'Front corner of the car', 'car-shake', boxCollider(0.25, 0.25, 0.25));
+    t('battery-posts', 'Battery posts', 'battery-posts', boxCollider(0.14, 0.06, 0.08));
+    t('batt-pos', 'Positive (+) battery terminal', 'batt-pos', sphereCollider(0.035));
+    t('batt-neg', 'Negative (−) battery terminal', 'batt-neg', sphereCollider(0.035));
+    t('battery', 'Battery', 'battery', boxCollider(0.2, 0.06, 0.12));
+    t('batt-tray', 'Battery tray', 'battery', boxCollider(0.26, 0.12, 0.18));
+    t('batt-holddown', 'Battery hold-down', 'batt-holddown', sphereCollider(0.04));
+    t('cable-pos', 'Positive cable end', 'cable-pos', sphereCollider(0.035));
+    t('cable-neg', 'Negative cable end', 'cable-neg', sphereCollider(0.035));
+    t('engine-ground', 'Bare metal engine bracket', 'engine-ground', sphereCollider(0.045));
+    t('coolant-reservoir', 'Coolant reservoir', 'coolant-reservoir', boxCollider(0.16, 0.18, 0.14));
+    t('radiator-cap', 'Radiator pressure cap', 'radiator-cap', sphereCollider(0.05));
+    t('washer-cap', 'Washer fluid cap', 'washer-cap', sphereCollider(0.045));
+    t('brake-reservoir', 'Brake fluid reservoir', 'brake-reservoir', boxCollider(0.12, 0.12, 0.12));
+    t('air-filter', 'Air filter box', 'air-filter', boxCollider(0.28, 0.06, 0.3));
+    t('drive-belt', 'Drive belt', 'drive-belt', boxCollider(0.22, 0.14, 0.06));
+    t('upper-hose', 'Upper radiator hose', 'upper-hose', boxCollider(0.24, 0.06, 0.06));
+    t('wipers', 'Wiper blades', 'wipers', boxCollider(0.1, 0.06, 0.5));
+    t('leak-check', 'Floor under the front of the car', 'leak-check', boxCollider(0.5, 0.06, 1.0));
     for (const pos of WHEELS) {
       const name = WHEEL_NAMES[pos];
       t(`valve-${pos}`, `Valve stem, ${name}`, `valve-${pos}`, sphereCollider(0.05));
@@ -335,6 +537,24 @@ export class Vehicle {
         t(`lug-${pos}-${i}`, `Lug nut ${i + 1}, ${name}`, `lug-${pos}-${i}`, sphereCollider(0.022));
       }
     }
+    for (const pos of FRONT) {
+      const name = WHEEL_NAMES[pos];
+      t(`pad-outer-${pos}`, `Outer brake pad, ${name}`, `pad-outer-${pos}`, sphereCollider(0.035));
+      t(`pad-inner-${pos}`, `Inner brake pad, ${name}`, `pad-inner-${pos}`, sphereCollider(0.035));
+      t(`rotor-${pos}`, `Brake rotor, ${name}`, `rotor-${pos}`, sphereCollider(0.05));
+      t(`caliper-bolts-${pos}`, `Caliper bolts, ${name}`, `caliper-bolts-${pos}`, sphereCollider(0.04));
+      t(`caliper-bracket-${pos}`, `Caliper bracket, ${name}`, `caliper-bracket-${pos}`, sphereCollider(0.06));
+      t(`pad-clips-${pos}`, `Pad slide clips, ${name}`, `pad-clips-${pos}`, sphereCollider(0.03));
+      t(`caliper-hook-${pos}`, `Caliper S-hook, ${name}`, `caliper-hook-${pos}`, sphereCollider(0.045));
+      t(`brake-hose-${pos}`, `Brake hose, ${name}`, `brake-hose-${pos}`, sphereCollider(0.035));
+      t(`caliper-piston-${pos}`, `Caliper piston, ${name}`, `caliper-piston-${pos}`, sphereCollider(0.045));
+    }
+  }
+
+  /** Removes everything registerTargets added. */
+  unregisterTargets(reg: Registry): void {
+    for (const id of this.targetIds) reg.removeTarget(id);
+    this.targetIds = [];
   }
 
   // --- state changes used by lesson effects ---
@@ -371,6 +591,7 @@ export class Vehicle {
   markLug(hubPos: WheelPos, lugIndex: number): void {
     const a = this.wheels[hubPos].lugAnchors[lugIndex];
     if (!a) return;
+    this.root.updateMatrixWorld(true);
     const world = a.getWorldPosition(new Vector3());
     const local = this.root.worldToLocal(world);
     const m = new Matrix4().compose(local.add(new Vector3(0, 0.014, 0)), new Quaternion(), new Vector3(1, 1, 1));
@@ -383,22 +604,57 @@ export class Vehicle {
     this.torqueMarks.count = 0;
   }
 
-  /** Puts every wheel back on its own hub with lugs on, hood closed. */
+  /** Moves a front caliper: 'home' bolted on, 'hung' on the S-hook. */
+  setCaliper(pos: 'FL' | 'FR', where: 'home' | 'hung'): void {
+    const b = this.brakes[pos];
+    b.caliper.position.copy(where === 'home' ? b.caliperHome : b.caliperHung);
+    b.caliper.rotation.set(where === 'home' ? 0 : 0.2, 0, where === 'home' ? -0.4 : 1.2);
+  }
+
+  setPadsVisible(pos: 'FL' | 'FR', visible: boolean): void {
+    for (const p of this.brakes[pos].pads) p.visible = visible;
+  }
+
+  /** Lamps for the lights check; `out` names a lamp that stays dark. */
+  setLights(on: boolean, out: string | null = null): void {
+    for (const l of this.lamps) l.visible = on && l.name !== out;
+  }
+
+  /** Swings a cable end off its post (connected=false) or back on. */
+  setCable(which: 'pos' | 'neg', connected: boolean): void {
+    const end = this.cableEnds[which];
+    const post = this.postPosition(which);
+    end.position.copy(post);
+    if (!connected) end.position.add(new Vector3(which === 'pos' ? -0.03 : 0.03, 0.05, 0.08));
+  }
+
+  /** Puts everything back the way the car arrived. */
   reset(): void {
     for (const pos of WHEELS) {
       this.mountWheel(pos, pos);
       this.wheels[pos].lugs.visible = true;
     }
+    for (const pos of FRONT) {
+      this.setCaliper(pos, 'home');
+      this.setPadsVisible(pos, true);
+    }
     this.clearTorqueMarks();
     this.setHoodOpen(false);
+    this.setLights(false);
+    this.setCable('pos', true);
+    this.setCable('neg', true);
+    this.corrosion.visible = false;
+    this.root.add(this.battery);
+    this.battery.position.copy(this.batteryHome);
+    this.battery.quaternion.identity();
+    this.battery.scale.setScalar(1);
+    this.battery.visible = true;
     this.drainPlug.visible = true;
     this.oilFilter.visible = true;
     this.fillCap.visible = true;
-    this.fillCap.position.set(1.72, 0.875, 0.18);
-    this.dipstick.position.set(1.95, 0.885, -0.1);
+    this.fillCap.position.copy(this.fillCapHome);
+    this.dipstick.position.copy(this.dipstickHome);
     this.root.position.set(0, 0, 0);
     this.root.rotation.set(0, 0, 0);
   }
-
-  static wheelRadius = WHEEL_R;
 }

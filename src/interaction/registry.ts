@@ -61,6 +61,8 @@ export class Registry {
   readonly items = new Map<ItemId, ItemEntry>();
   /** Raycast candidates; colliders are toggled through their `visible`-independent `enabled` flag. */
   readonly colliders: Mesh[] = [];
+  /** Solid meshes (car body, lift posts, walls) that stop pointer rays. */
+  readonly occluders: Mesh[] = [];
 
   addTarget(id: TargetId, label: string, anchor: Object3D, col: Mesh): TargetEntry {
     col.userData.pick = { kind: 'target', id } satisfies PickInfo;
@@ -99,6 +101,33 @@ export class Registry {
     col.userData.pick = pick;
     col.userData.enabled = true;
     this.colliders.push(col);
+  }
+
+  addOccluder(...meshes: Mesh[]): void {
+    for (const m of meshes) if (!this.occluders.includes(m)) this.occluders.push(m);
+  }
+
+  removeOccluder(...meshes: Mesh[]): void {
+    for (const m of meshes) {
+      const i = this.occluders.indexOf(m);
+      if (i >= 0) this.occluders.splice(i, 1);
+    }
+  }
+
+  removeTarget(id: TargetId): void {
+    const t = this.targets.get(id);
+    if (!t) return;
+    t.collider.removeFromParent();
+    this.removeCollider(t.collider);
+    this.targets.delete(id);
+  }
+
+  removeItem(id: ItemId): void {
+    const item = this.items.get(id);
+    if (!item) return;
+    item.collider.removeFromParent();
+    this.removeCollider(item.collider);
+    this.items.delete(id);
   }
 
   removeCollider(col: Mesh): void {

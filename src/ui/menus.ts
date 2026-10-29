@@ -284,11 +284,11 @@ export class Menus {
     const prog = this.save.progress(lesson.id);
 
     p.text('Vehicle', 50, 196, { size: 26, color: UI.muted });
-    // Stage 1 ships the sedan; the other vehicles arrive in later updates.
+    // The Wren EV arrives in a later update.
     const vehicles: VehicleId[] = ['sedan', 'pickup', 'ev'];
     vehicles.forEach((v, i) => {
       const supported = lesson.vehicles.includes(v);
-      const built = v === 'sedan';
+      const built = v !== 'ev';
       p.button(
         `vehicle-${v}`,
         built ? VEHICLES[v].name : `${VEHICLES[v].name} (soon)`,
@@ -307,7 +307,7 @@ export class Menus {
     const modes: [Mode, string, string][] = [
       ['learn', 'Learn', 'Valkyrie guides every step and explains why.'],
       ['practice', 'Practice', 'Do it yourself. Ask for hints when stuck.'],
-      ['test', 'Test', 'From memory. Pass with 80% and no safety errors.'],
+      ['test', 'Test', 'From memory, on a random vehicle. 80% and no safety errors.'],
     ];
     modes.forEach(([mode, title, desc], i) => {
       const y = 330 + i * 116;
