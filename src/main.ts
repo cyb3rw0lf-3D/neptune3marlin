@@ -115,7 +115,10 @@ async function main(): Promise<void> {
       rep.type = 'button';
       rep.textContent = 'Report card';
       rep.addEventListener('click', () =>
-        saveOrPreview(`report-${slug(profile.name)}-${slug(run.lessonTitle)}-${run.mode}.html`, reportHtml(profile, run)),
+        saveOrPreview(
+          `report-${slug(profile.name)}-${slug(run.lessonTitle)}-${run.mode}.html`,
+          reportHtml(profile, run),
+        ),
       );
       buttons.appendChild(rep);
       if (run.mode === 'test' && run.passed) {
