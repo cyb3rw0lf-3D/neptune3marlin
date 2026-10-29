@@ -1,6 +1,6 @@
 import { type Intersection, type Object3D, Raycaster, Vector3 } from 'three';
 import type { SoundFx } from '../audio/sfx';
-import { TwistTracker } from '../input/gestures';
+import { PumpTracker, TwistTracker } from '../input/gestures';
 import type { Pointer } from '../input/pointer';
 import type { Verdict } from '../lessons/engine/runner';
 import { HAND, type ItemId, type Measure, type StepDef, type TargetId } from '../lessons/engine/types';
@@ -33,10 +33,11 @@ export interface ActiveAction {
   item: ItemId;
   target: TargetId;
   step: StepDef;
-  kind: 'hold' | 'twist';
+  kind: 'hold' | 'twist' | 'pump';
   seconds: number;
   progress: number;
   twist: TwistTracker | null;
+  pump: PumpTracker | null;
   measure?: Measure;
   /** Accumulated value for fill measures. */
   value: number;
@@ -53,7 +54,14 @@ interface Hit {
 }
 
 const HOLD_TWIST_SECONDS_PER_TURN = 1.1;
+const HOLD_SECONDS_PER_PUMP = 0.45;
+/**
+ * A part may sit this far behind the surface in front of it and still be
+ * picked, so things mounted on a surface (lug nuts, terminals) stay usable.
+ */
+export const OCCLUSION_TOLERANCE = 0.03;
 const _center = new Vector3();
+const _dir = new Vector3();
 
 /**
  * Turns pointer input into grabbing tools, using them on targets with gestures,
@@ -95,11 +103,14 @@ export class Interaction {
     for (const c of this.registry.colliders) if (c.userData.enabled && isShown(c)) objects.push(c);
     for (const p of this.panels) if (p.mesh.visible && isShown(p.mesh)) objects.push(p.mesh);
     const hits: Intersection[] = this.raycaster.intersectObjects(objects, false);
+    const wall = this.nearestOccluder();
     const out: Hit[] = [];
     const heldItem = this.held.get(pointer.id);
     for (const h of hits) {
       const pick = h.object.userData.pick as PickInfo | undefined;
       if (!pick) continue;
+      // Solid things in front of a part block it; menus and dialogs float above everything.
+      if (pick.kind !== 'ui' && h.distance > wall + OCCLUSION_TOLERANCE) continue;
       if (pick.kind === 'item' && (pick.id === heldItem || this.holderOf(pick.id))) continue;
       out.push({
         pick,
@@ -110,6 +121,25 @@ export class Interaction {
       });
     }
     return out;
+  }
+
+  /** Distance along the current ray to the first solid surface (Infinity if none). */
+  private nearestOccluder(): number {
+    const shown = this.registry.occluders.filter(isShown);
+    const hit = this.raycaster.intersectObjects(shown, false)[0];
+    return hit ? hit.distance : Number.POSITIVE_INFINITY;
+  }
+
+  /** Whether a target can be pointed at from an eye position (nothing solid in the way). */
+  canSee(eye: Vector3, target: TargetId): boolean {
+    const entry = this.registry.targets.get(target);
+    if (!entry) return false;
+    const center = entry.collider.getWorldPosition(new Vector3());
+    _dir.subVectors(center, eye).normalize();
+    this.raycaster.ray.set(eye, _dir);
+    const hit = this.raycaster.intersectObject(entry.collider, false)[0];
+    if (!hit) return false;
+    return hit.distance <= this.nearestOccluder() + OCCLUSION_TOLERANCE;
   }
 
   /** Picks the most useful hit, since colliders overlap (a lug inside a wheel, a jug that is also a target). */
@@ -166,6 +196,8 @@ export class Interaction {
 
       if (this.active && this.active.pointer === pointer) {
         this.continueAction(dt, pointer);
+        // A quick click can release one action and press again within one slow frame.
+        if (!this.active && pointer.selectDown) this.onSelect(pointer, hit);
       } else if (pointer.selectDown) {
         this.onSelect(pointer, hit);
       }
@@ -229,24 +261,43 @@ export class Interaction {
         return done;
       }
       const key = `${v.step.id}:${target}`;
-      const twist = v.gesture.kind === 'twist' ? new TwistTracker(v.gesture.turns, v.gesture.dir) : null;
+      const g = v.gesture;
+      const twist = g.kind === 'twist' ? new TwistTracker(g.turns, g.dir) : null;
+      const pump = g.kind === 'pump' ? new PumpTracker(g.strokes, pointer.canTwist ? 0.1 : 0.06) : null;
       const saved = this.partial.get(key) ?? 0;
       if (twist) twist.advance(saved * twist.turns * Math.PI * 2);
+      if (pump) {
+        pump.strokes = Math.round(saved * pump.needed);
+        // Every press of the handle is one stroke, so clicking or tapping works too.
+        pump.click();
+        this.sfx.play('clunk');
+      }
       const fillStart = v.measure?.source === 'fill' ? (this.fillValues.get(key) ?? v.measure.start ?? 0) : 0;
+      const progress = pump ? pump.progress : saved;
       this.active = {
         pointer,
         item,
         target,
         step: v.step,
-        kind: v.gesture.kind,
-        seconds: v.gesture.kind === 'hold' ? v.gesture.seconds : v.gesture.turns * HOLD_TWIST_SECONDS_PER_TURN,
-        progress: saved,
+        kind: g.kind,
+        seconds:
+          g.kind === 'hold'
+            ? g.seconds
+            : g.kind === 'twist'
+              ? g.turns * HOLD_TWIST_SECONDS_PER_TURN
+              : g.strokes * HOLD_SECONDS_PER_PUMP,
+        progress,
         twist,
+        pump,
         measure: v.measure,
         value: fillStart,
         soundTimer: 0,
       };
-      this.hooks.onProgress(target, saved, this.active);
+      if (pump && pump.progress >= 1) {
+        this.finishAction(pointer);
+        return v;
+      }
+      this.hooks.onProgress(target, progress, this.active);
       return v;
     }
     if (v.kind === 'mistake') this.hooks.onVerdict(v, pointer, item);
@@ -268,6 +319,7 @@ export class Interaction {
         this.partial.set(key, a.progress);
       }
       a.twist?.release();
+      a.pump?.release();
       this.hooks.onProgress(null, 0, null);
       return;
     }
@@ -283,7 +335,15 @@ export class Interaction {
       }
       return;
     }
-    if (a.twist) {
+    if (a.pump) {
+      if (this.hooks.simpleGestures()) {
+        a.progress = Math.min(1, a.progress + dt / a.seconds);
+      } else {
+        const signal = pointer.canTwist ? pointer.ray.origin.y : pointer.ray.direction.y;
+        if (a.pump.update(signal)) this.sfx.play('clunk');
+        a.progress = a.pump.progress;
+      }
+    } else if (a.twist) {
       const useHold = !pointer.canTwist || this.hooks.simpleGestures();
       if (useHold) a.twist.advance((dt / HOLD_TWIST_SECONDS_PER_TURN) * Math.PI * 2);
       else a.twist.update(pointer.ray.direction, pointer.up);
@@ -297,13 +357,16 @@ export class Interaction {
       a.progress = Math.min(1, a.progress + dt / a.seconds);
     }
     this.hooks.onProgress(a.target, a.progress, a);
-    if (a.progress >= 1) {
-      this.active = null;
-      this.partial.delete(key);
-      this.hooks.onProgress(null, 0, null);
-      const value = a.measure?.source === 'setting' ? this.hooks.toolSetting(a.item) : undefined;
-      this.hooks.onVerdict(this.hooks.complete(a.target, value), pointer, a.item);
-    }
+    if (a.progress >= 1) this.finishAction(pointer);
+  }
+
+  private finishAction(pointer: Pointer): void {
+    const a = this.active as ActiveAction;
+    this.active = null;
+    this.partial.delete(`${a.step.id}:${a.target}`);
+    this.hooks.onProgress(null, 0, null);
+    const value = a.measure?.source === 'setting' ? this.hooks.toolSetting(a.item) : undefined;
+    this.hooks.onVerdict(this.hooks.complete(a.target, value), pointer, a.item);
   }
 
   grab(pointer: Pointer, id: ItemId): void {

@@ -69,3 +69,57 @@ export class TwistTracker {
     this.turned += radians;
   }
 }
+
+/**
+ * Counts pump strokes on a handle (the floor jack). Feed it a height signal:
+ * the controller's height in VR, or the mouse ray's pitch on a flat screen.
+ * A stroke counts on each push down; the handle must come back up partway
+ * before the next one counts. A click or tap also counts as one stroke.
+ */
+export class PumpTracker {
+  strokes = 0;
+  private ref: number | null = null;
+  private phase: 'down' | 'up' = 'down';
+
+  constructor(
+    readonly needed: number,
+    /** How far the signal must drop for a stroke. */
+    readonly travel: number,
+  ) {}
+
+  get progress(): number {
+    return Math.min(1, this.strokes / this.needed);
+  }
+
+  /** Returns true when this sample completed a stroke. */
+  update(h: number): boolean {
+    if (this.ref === null) {
+      this.ref = h;
+      return false;
+    }
+    if (this.phase === 'down') {
+      if (h > this.ref) this.ref = h;
+      else if (this.ref - h >= this.travel) {
+        this.phase = 'up';
+        this.ref = h;
+        this.strokes++;
+        return true;
+      }
+    } else if (h < this.ref) {
+      this.ref = h;
+    } else if (h - this.ref >= this.travel * 0.5) {
+      this.phase = 'down';
+      this.ref = h;
+    }
+    return false;
+  }
+
+  click(): void {
+    this.strokes++;
+  }
+
+  release(): void {
+    this.ref = null;
+    this.phase = 'down';
+  }
+}

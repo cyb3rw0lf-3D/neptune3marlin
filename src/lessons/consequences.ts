@@ -29,6 +29,7 @@ export class ConsequencePlayer {
   private readonly flash: Mesh;
   private readonly dropGeo = new SphereGeometry(0.012, 5, 4);
   private readonly sparkGeo = new BoxGeometry(0.01, 0.01, 0.03);
+  private readonly puffGeo = new SphereGeometry(0.035, 6, 4);
   reducedMotion = false;
 
   constructor(
@@ -68,6 +69,20 @@ export class ConsequencePlayer {
         return this.foam(where);
       case 'tire-overinflate':
         return this.tireBulge(where);
+      case 'car-slip':
+        return this.carSlip();
+      case 'caliper-hose':
+        return this.caliperHose();
+      case 'spark':
+        return this.stripped(where);
+      case 'pedal-sink':
+        return this.pedalSink();
+      case 'fan-spin':
+        return this.fanSpin(where);
+      case 'hot-steam':
+        return this.steam(where);
+      case 'wheel-spin':
+        return this.wheelSpin();
       default:
         this.sfx.play('error');
         return this.tweens.wait(0.4);
@@ -105,6 +120,107 @@ export class ConsequencePlayer {
       w.lift.setHeight(h);
       w.vehicle.root.position.y = h;
     });
+  }
+
+  /** The car settles off the jack onto its tires, then rewinds. */
+  private async carSlip(): Promise<void> {
+    const w = this.world;
+    const start = w.jackRaise;
+    const root = w.vehicle.root;
+    this.sfx.play('alarm');
+    void this.redFlash();
+    await this.tweens.run(0.4, (t) => {
+      w.setJackRaise(Math.max(0, start - Math.max(0.6, start) * ease.in(t)));
+      root.position.z = 0.06 * ease.in(t);
+    });
+    this.sfx.play('clunk');
+    await this.tweens.wait(1.3);
+    await this.tweens.run(0.9, (t) => {
+      w.setJackRaise(w.jackRaise + (start - w.jackRaise) * ease.inOut(t));
+      root.position.z = 0.06 * (1 - ease.inOut(t));
+    });
+    w.setJackRaise(start);
+    root.position.z = 0;
+  }
+
+  /** The caliper drops and dangles by its hose, which glows red where it strains. */
+  private async caliperHose(): Promise<void> {
+    const b = this.world.vehicle.brakes.FL;
+    const cal = b.caliper;
+    const home = cal.position.clone();
+    const rot = cal.rotation.z;
+    this.sfx.play('clunk');
+    void this.redFlash(0.35);
+    await this.tweens.run(0.5, (t) => {
+      cal.position.y = home.y - 0.12 * ease.out(t);
+      cal.rotation.z = rot + 0.6 * Math.sin(t * 12) * (1 - t);
+    });
+    await this.tweens.wait(1.2);
+    await this.tweens.run(0.6, (t) => {
+      cal.position.y = home.y - 0.12 * (1 - ease.inOut(t));
+    });
+    cal.position.copy(home);
+    cal.rotation.z = rot;
+  }
+
+  /** The pedal goes to the floor and the car creeps into the chocks. */
+  private async pedalSink(): Promise<void> {
+    const root = this.world.vehicle.root;
+    const x = root.position.x;
+    this.sfx.play('engine');
+    await this.tweens.wait(0.4);
+    this.sfx.play('alarm');
+    void this.redFlash();
+    await this.tweens.run(0.8, (t) => {
+      root.position.x = x + 0.12 * ease.out(t);
+    });
+    this.sfx.play('clunk');
+    await this.tweens.wait(1.0);
+    await this.tweens.run(0.8, (t) => {
+      root.position.x = x + 0.12 * (1 - ease.inOut(t));
+    });
+    root.position.x = x;
+  }
+
+  /** The cooling fan whirs to life by the student's hand. */
+  private async fanSpin(at: Vector3): Promise<void> {
+    this.sfx.play('impact');
+    void this.redFlash(0.3);
+    const mat = new MeshBasicMaterial({ color: 0xd0e4f0 });
+    await this.tweens.run(1.2, () => {
+      if (Math.random() < 0.5) {
+        const v = new Vector3((Math.random() - 0.5) * 0.6, 0.2 + Math.random() * 0.3, (Math.random() - 0.5) * 0.6);
+        this.spawn(at, v, mat, this.dropGeo, 0.5, 0.1);
+      }
+    });
+    await this.tweens.wait(0.5);
+  }
+
+  /** A burst of steam from the radiator neck. */
+  private async steam(at: Vector3): Promise<void> {
+    this.sfx.play('hiss');
+    void this.redFlash(0.35);
+    const mat = new MeshLambertMaterial({ color: 0xf2f4f6, transparent: true, opacity: 0.8 });
+    await this.tweens.run(1.6, () => {
+      for (let i = 0; i < 2; i++) {
+        const v = new Vector3((Math.random() - 0.5) * 0.3, 0.6 + Math.random() * 0.5, (Math.random() - 0.5) * 0.3);
+        this.spawn(at, v, mat, this.puffGeo, 0.9, -0.05);
+      }
+    });
+    await this.tweens.wait(0.4);
+  }
+
+  /** A lug nut won't break loose because the raised wheel just spins. */
+  private async wheelSpin(): Promise<void> {
+    const hub = this.world.vehicle.wheels.FL;
+    const wheel = hub.mounted ? this.world.vehicle.wheelParts[hub.mounted].group : null;
+    this.sfx.play('ratchet');
+    await this.tweens.run(1.4, (t) => {
+      if (wheel) wheel.rotation.z = -t * Math.PI * 2 * 1.5;
+    });
+    if (wheel) wheel.rotation.z = 0;
+    this.sfx.play('error');
+    await this.tweens.wait(0.4);
   }
 
   private async carTilt(): Promise<void> {

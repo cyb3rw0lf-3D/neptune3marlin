@@ -1,4 +1,4 @@
-import { Group, Object3D, type Vector3 } from 'three';
+import { Group, type Mesh, Object3D, type Vector3 } from 'three';
 import { boxCollider, type Registry } from '../interaction/registry';
 import { WHEELS, type WheelPos } from '../vehicles/specs';
 import { build } from './lowpoly';
@@ -11,6 +11,7 @@ const ARM_Y = 0.13;
 interface Arm {
   pos: WheelPos;
   pivot: Group;
+  mesh: Mesh | null;
   pad: Object3D;
   placedAngle: number;
   parkedAngle: number;
@@ -26,6 +27,8 @@ export class Lift {
   readonly arms = {} as Record<WheelPos, Arm>;
   height = 0;
   locked = false;
+  /** Solid parts that stop pointer rays (the arms are rebuilt per vehicle). */
+  readonly occluders: Mesh[] = [];
   private lockLever: Object3D;
 
   constructor(liftPoints: Record<WheelPos, Vector3>) {
@@ -41,16 +44,30 @@ export class Lift {
     }
     posts.box(0.25, 0.2, POST_Z * 2 + 0.3, C.liftBlue, { p: [-0.05, 3.5, 0] });
     posts.box(0.08, 0.04, POST_Z * 2, C.safetyYellow, { p: [-0.05, 0.02, 0] });
-    this.root.add(posts.mesh('lift-posts'));
+    const postMesh = posts.mesh('lift-posts');
+    this.root.add(postMesh);
+    this.occluders.push(postMesh);
 
     const carriages = build();
     for (const side of [1, -1]) {
       carriages.box(0.4, 0.5, 0.2, C.liftYellow, { p: [-0.05, 0.35, side * (POST_Z - 0.24)] });
     }
-    this.carriage.add(carriages.mesh('carriages'));
+    const carriageMesh = carriages.mesh('carriages');
+    this.carriage.add(carriageMesh);
+    this.occluders.push(carriageMesh);
     this.root.add(this.carriage);
 
-    for (const pos of WHEELS) this.buildArm(pos, liftPoints[pos]);
+    for (const pos of WHEELS) {
+      const front = pos.startsWith('F');
+      const side = pos.endsWith('R') ? 1 : -1;
+      const pivot = new Group();
+      pivot.position.set(-0.05 + (front ? 0.14 : -0.14), ARM_Y, side * (POST_Z - 0.24));
+      const pad = new Object3D();
+      pivot.add(pad);
+      this.carriage.add(pivot);
+      this.arms[pos] = { pos, pivot, mesh: null, pad, placedAngle: 0, parkedAngle: 0, placed: false };
+    }
+    this.setLiftPoints(liftPoints);
 
     // Control box on the passenger-side post, facing the tool cart.
     this.controlBox.position.set(-0.05, 1.15, POST_Z + 0.2);
@@ -73,28 +90,39 @@ export class Lift {
     this.root.add(this.controlBox);
   }
 
-  private buildArm(pos: WheelPos, liftPoint: Vector3): void {
-    const side = pos.endsWith('R') ? 1 : -1;
-    const front = pos.startsWith('F');
-    const pivot = new Group();
-    pivot.position.set(-0.05 + (front ? 0.14 : -0.14), ARM_Y, side * (POST_Z - 0.24));
-    const dx = liftPoint.x - pivot.position.x;
-    const dz = liftPoint.z - pivot.position.z;
-    const len = Math.hypot(dx, dz);
-    const placedAngle = Math.atan2(-dz, dx);
-    // Parked arms swing out alongside the car.
-    const parkedAngle = placedAngle + (front ? -1 : 1) * side * 0.9;
-    const arm = build()
-      .box(len, 0.07, 0.12, C.liftBlue, { p: [len / 2, 0, 0] })
-      .cyl(0.06, 0.06, 0.18, 10, C.rubber, { p: [len, 0.1, 0] })
-      .mesh(`arm-${pos}`);
-    pivot.add(arm);
-    const pad = new Object3D();
-    pad.position.set(len, 0.15, 0);
-    pivot.add(pad);
-    pivot.rotation.y = parkedAngle;
-    this.carriage.add(pivot);
-    this.arms[pos] = { pos, pivot, pad, placedAngle, parkedAngle, placed: false };
+  /**
+   * Shapes the four arms for a vehicle's lift points. Taller vehicles get
+   * screw-up pads (truck adapters) so each pad meets its lift point.
+   */
+  setLiftPoints(liftPoints: Record<WheelPos, Vector3>): void {
+    for (const pos of WHEELS) {
+      const arm = this.arms[pos];
+      const liftPoint = liftPoints[pos];
+      const front = pos.startsWith('F');
+      const side = pos.endsWith('R') ? 1 : -1;
+      const dx = liftPoint.x - arm.pivot.position.x;
+      const dz = liftPoint.z - arm.pivot.position.z;
+      const len = Math.hypot(dx, dz);
+      const padH = Math.max(0.12, liftPoint.y - ARM_Y - 0.03);
+      arm.placedAngle = Math.atan2(-dz, dx);
+      // Parked arms swing out alongside the car.
+      arm.parkedAngle = arm.placedAngle + (front ? -1 : 1) * side * 0.9;
+      if (arm.mesh) {
+        arm.pivot.remove(arm.mesh);
+        arm.mesh.geometry.dispose();
+        const i = this.occluders.indexOf(arm.mesh);
+        if (i >= 0) this.occluders.splice(i, 1);
+      }
+      const b = build()
+        .box(len, 0.07, 0.12, C.liftBlue, { p: [len / 2, 0, 0] })
+        .cyl(0.06, 0.06, padH, 10, C.rubber, { p: [len, padH / 2 + 0.035, 0] });
+      if (padH > 0.2) b.cyl(0.045, 0.045, padH - 0.1, 8, C.liftYellow, { p: [len, (padH - 0.1) / 2 + 0.035, 0] });
+      arm.mesh = b.mesh(`arm-${pos}`);
+      arm.pivot.add(arm.mesh);
+      this.occluders.push(arm.mesh);
+      arm.pad.position.set(len, padH + 0.04, 0);
+      arm.pivot.rotation.y = arm.placed ? arm.placedAngle : arm.parkedAngle;
+    }
   }
 
   registerTargets(reg: Registry): void {

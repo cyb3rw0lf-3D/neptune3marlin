@@ -23,6 +23,8 @@ export interface GameState {
   liftHeight: number;
   torque: number;
   held: string | null;
+  vehicle: string;
+  tagOpen: boolean;
   profiles: string[];
 }
 

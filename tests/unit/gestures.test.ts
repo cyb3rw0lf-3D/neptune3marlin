@@ -1,6 +1,6 @@
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { signedAngleAround, TwistTracker } from '../../src/input/gestures';
+import { PumpTracker, signedAngleAround, TwistTracker } from '../../src/input/gestures';
 
 const forward = new Vector3(0, 0, -1); // pointing away from the viewer
 
@@ -33,5 +33,29 @@ describe('twist gestures', () => {
     expect(t.turned).toBe(0);
     t.advance(Math.PI);
     expect(t.progress).toBe(1);
+  });
+});
+
+describe('PumpTracker', () => {
+  it('counts a stroke on each push down, only after the handle comes back up', () => {
+    const p = new PumpTracker(3, 0.1);
+    // Down 12 cm, up 12 cm, three times.
+    for (let i = 0; i < 3; i++) for (const h of [1.0, 0.94, 0.88, 0.94, 1.0]) p.update(h);
+    expect(p.strokes).toBe(3);
+    expect(p.progress).toBe(1);
+  });
+
+  it('ignores small jiggles and counts clicks', () => {
+    const p = new PumpTracker(4, 0.1);
+    for (const h of [1.0, 0.97, 1.0, 0.96, 0.99]) p.update(h);
+    expect(p.strokes).toBe(0);
+    p.click();
+    expect(p.progress).toBe(0.25);
+  });
+
+  it('needs the handle to rise again before the next stroke', () => {
+    const p = new PumpTracker(2, 0.1);
+    for (const h of [1.0, 0.88, 0.76, 0.64]) p.update(h);
+    expect(p.strokes).toBe(1);
   });
 });

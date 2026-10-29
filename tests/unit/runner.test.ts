@@ -201,3 +201,53 @@ describe('LessonRunner', () => {
     expect(r.result().durationSec).toBe(60);
   });
 });
+
+describe('inspection tags', () => {
+  const missed = { code: 'inspection.belt.missed', kind: 'value' as const, label: 'Missed', explain: 'Missed it.' };
+  const flag = { code: 'inspection.belt.false_flag', kind: 'procedure' as const, label: 'Flag', explain: 'Fine part.' };
+  const off = { code: 'inspection.belt.severity', kind: 'wrong-item' as const, label: 'Off', explain: 'Urgency.' };
+  const tagStep = (correct: 0 | 1 | 2): StepDef => ({
+    id: 'belt',
+    label: 'Check the belt',
+    say: 'Look at the belt.',
+    hint: 'Belt.',
+    item: HAND,
+    targets: ['drive-belt'],
+    gesture: { kind: 'press' },
+    tag: {
+      prompt: 'your call?',
+      options: ['Green', 'Yellow', 'Red'],
+      correct,
+      wrong: missed,
+      wrongByOption: correct === 0 ? { 1: flag, 2: flag } : { 0: missed, [correct === 1 ? 2 : 1]: off },
+    },
+  });
+
+  it('waits for the tag after the part is checked, and blocks other actions', () => {
+    const r = new LessonRunner([tagStep(2)], 'test');
+    expect(r.awaitingTag).toBe(false);
+    expect(r.attempt(HAND, 'drive-belt').kind).toBe('start');
+    const v = r.complete('drive-belt');
+    expect(v).toMatchObject({ kind: 'done', stepDone: false, tagPending: true });
+    expect(r.awaitingTag).toBe(true);
+    expect(r.attempt(HAND, 'drive-belt')).toMatchObject({ kind: 'ignored', reason: 'choice-pending' });
+    expect(r.answer(2)).toMatchObject({ kind: 'done', stepDone: true, lessonDone: true });
+    expect(r.result()).toMatchObject({ score: 100, passed: true });
+  });
+
+  it('scores a missed fault, a false flag and a wrong urgency differently', () => {
+    const cases: [0 | 1 | 2, number, number][] = [
+      [2, 0, 10], // missed a red
+      [0, 2, 10], // flagged a good part
+      [2, 1, 2], // right problem, wrong urgency
+    ];
+    for (const [correct, picked, penalty] of cases) {
+      const r = new LessonRunner([tagStep(correct)], 'test');
+      r.attempt(HAND, 'drive-belt');
+      r.complete('drive-belt');
+      expect(r.answer(picked).kind).toBe('mistake');
+      expect(r.answer(correct).kind).toBe('done');
+      expect(r.result().score).toBe(100 - penalty);
+    }
+  });
+});
