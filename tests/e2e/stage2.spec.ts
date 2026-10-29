@@ -168,3 +168,20 @@ test('the jump-start scene with two cars stays inside the Quest 2 render budget'
   expect(info.calls).toBeLessThan(150);
   expect(info.triangles).toBeLessThan(250_000);
 });
+
+test('quick clicks on a slow device are not lost', async ({ page }) => {
+  await begin(page, 'oil-change', 'practice', 'sedan', 1);
+  await autoplay(page, 'ppe');
+  await call(page, 'teleport', 'cart');
+  await page.waitForTimeout(400);
+  const glasses = await call<{ x: number; y: number }>(page, 'screenPos', 'ppe-glasses');
+  const gloves = await call<{ x: number; y: number }>(page, 'screenPos', 'ppe-gloves');
+  // Slow frames, like a low-end Chromebook: both clicks land before the next frame.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 8 });
+  await page.mouse.click(glasses.x, glasses.y);
+  await page.mouse.click(gloves.x, gloves.y);
+  // Back to full speed: the queued clicks are replayed one per frame from here.
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  await expect.poll(async () => (await state(page)).step).toBe('fill-cap-off');
+});

@@ -35,7 +35,13 @@ test('real mouse input grabs a tool, uses it, and walks the menus', async ({ pag
     const p = await call<{ x: number; y: number; inView: boolean }>(page, 'screenPos', target);
     expect(p.inView).toBe(true);
     await page.mouse.click(p.x, p.y);
-    await page.waitForTimeout(200);
+    // On a slow runner one frame can outlast the gap between clicks, so wait for each to land.
+    await expect
+      .poll(async () => {
+        const s = await state(page);
+        return s.step !== 'ppe' || !s.remaining.includes(target);
+      })
+      .toBe(true);
   }
   await expect.poll(async () => (await state(page)).step).toBe('fill-cap-off');
 

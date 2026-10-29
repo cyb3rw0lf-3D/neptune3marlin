@@ -22,6 +22,10 @@ export class DesktopInput {
   private lastY = 0;
   private keys = new Set<string>();
   private moved = 0;
+  /** Clicks that arrived before the previous one was handled (slow frames), in order. */
+  private queued: { ndc: Vector2; released: boolean }[] = [];
+  /** Where the latest click aimed, kept until a frame handles it even if the mouse moves on. */
+  private pressNdc: Vector2 | null = null;
   enabled = true;
 
   constructor(
@@ -87,6 +91,8 @@ export class DesktopInput {
     if (!this.enabled) return;
     this.el.setPointerCapture?.(e.pointerId);
     this.pointer.kind = e.pointerType === 'touch' ? 'touch' : 'mouse';
+    // A frame has not handled the previous click yet: queue this one behind it.
+    const pending = this.pointer.selectDown || this.queued.length > 0;
     this.setNdc(e);
     this.updateRay();
     if (e.button === 2 || (e.button === 0 && !this.cb.isInteractive())) {
@@ -96,7 +102,13 @@ export class DesktopInput {
       this.lastY = e.clientY;
       return;
     }
-    if (e.button === 0) this.pointer.pressSelect();
+    if (e.button !== 0) return;
+    if (pending) {
+      this.queued.push({ ndc: this.ndc.clone(), released: false });
+      return;
+    }
+    this.pressNdc = this.ndc.clone();
+    this.pointer.pressSelect();
   }
 
   private onUp(e: PointerEvent): void {
@@ -104,13 +116,29 @@ export class DesktopInput {
       this.looking = false;
       return;
     }
-    if (e.button === 0 || e.pointerType === 'touch') this.pointer.releaseSelect();
+    if (e.button !== 0 && e.pointerType !== 'touch') return;
+    const last = this.queued[this.queued.length - 1];
+    if (last && !last.released) {
+      last.released = true;
+      return;
+    }
+    this.pointer.releaseSelect();
   }
 
-  private updateRay(): void {
+  /** Replays one queued click per frame, so quick clicks on a slow device are not lost. */
+  private replayQueued(): void {
+    const next = this.queued[0];
+    if (!next || this.pointer.select || this.pointer.selectDown) return;
+    this.queued.shift();
+    this.pressNdc = next.ndc;
+    this.pointer.pressSelect();
+    if (next.released) this.pointer.releaseSelect();
+  }
+
+  private updateRay(ndc = this.ndc): void {
     this.camera.updateMatrixWorld();
     const origin = this.camera.getWorldPosition(new Vector3());
-    const target = new Vector3(this.ndc.x, this.ndc.y, 0.5).unproject(this.camera);
+    const target = new Vector3(ndc.x, ndc.y, 0.5).unproject(this.camera);
     this.pointer.ray.origin.copy(origin);
     this.pointer.ray.direction.copy(target.sub(origin).normalize());
     this.pointer.up.set(0, 1, 0).applyQuaternion(this.camera.getWorldQuaternion(this.camera.quaternion.clone()));
@@ -118,7 +146,9 @@ export class DesktopInput {
 
   update(dt: number): void {
     if (!this.enabled) return;
-    this.updateRay();
+    this.replayQueued();
+    // An unhandled click keeps its own aim; otherwise follow the mouse.
+    this.updateRay(this.pointer.selectDown && this.pressNdc ? this.pressNdc : this.ndc);
     const k = this.keys;
     const forward = (k.has('w') || k.has('arrowup') ? 1 : 0) - (k.has('s') || k.has('arrowdown') ? 1 : 0);
     const right = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0);
