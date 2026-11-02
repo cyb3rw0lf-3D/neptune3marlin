@@ -101,9 +101,13 @@ for (const file of readdirSync(clipDir)) {
 
 // --- packs ---
 const pcm = (file) =>
-  execFileSync('ffmpeg', ['-loglevel', 'error', '-i', file, '-f', 's16le', '-ac', '1', '-ar', String(SAMPLE_RATE), '-'], {
-    maxBuffer: 1 << 28,
-  });
+  execFileSync(
+    'ffmpeg',
+    ['-loglevel', 'error', '-i', file, '-f', 's16le', '-ac', '1', '-ar', String(SAMPLE_RATE), '-'],
+    {
+      maxBuffer: 1 << 28,
+    },
+  );
 const silence = (sec) => Buffer.alloc(Math.round(sec * SAMPLE_RATE) * 2);
 
 const keys = [...wanted.keys()].sort();
@@ -117,7 +121,22 @@ const flush = () => {
   const name = `pack-${String(packs.length).padStart(2, '0')}.mp3`;
   execFileSync(
     'ffmpeg',
-    ['-loglevel', 'error', '-y', '-f', 's16le', '-ar', String(SAMPLE_RATE), '-ac', '1', '-i', '-', '-b:a', '48k', join(outDir, name)],
+    [
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      's16le',
+      '-ar',
+      String(SAMPLE_RATE),
+      '-ac',
+      '1',
+      '-i',
+      '-',
+      '-b:a',
+      '48k',
+      join(outDir, name),
+    ],
     { input: Buffer.concat(chunk) },
   );
   packs.push(name);
