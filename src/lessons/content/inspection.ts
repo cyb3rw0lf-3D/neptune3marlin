@@ -205,9 +205,7 @@ export const inspection: LessonDef<InspectionVariant> = {
     'Inspection complete. You found what was really wrong and did not flag anything that was fine. That honesty is what keeps customers coming back.',
   variant: (rng, vehicle) => {
     const found = pickFaults(rng, checksFor(vehicle));
-    const sev = found.tires ?? 0;
-    const tread = sev === 0 ? vehicle.tires.newTread32 - 3 : sev === 1 ? 4 : 2;
-    return { found, tread };
+    return { found, tread: treadFor(vehicle, found.tires ?? 0) };
   },
   stage: (v) => ({
     faults: CHECKS.filter((c) => c.visual && (v.found[c.id] ?? 0) > 0).map((c) => c.visual as string),
@@ -307,47 +305,7 @@ function inspectionSteps(vehicle: VehicleSpec, v: InspectionVariant, units: Unit
   }
   for (const check of checksFor(vehicle)) {
     const severity = (v.found[check.id] ?? 0) as Severity;
-    let reading: Reading;
-    if (check.id === 'tires') {
-      reading = { quantity: 'tread', value: v.tread, note: 'Deepest groove reading' };
-    } else {
-      reading = { text: check.findings[severity] ?? check.findings[0] };
-    }
-    const step: StepDef = {
-      id: `check-${check.id}`,
-      label: `Check the ${check.name}`,
-      say: `${check.say} Then make your call.`,
-      hint: check.hint,
-      spot: check.spot,
-      item: check.item ?? HAND,
-      targets: [check.target],
-      gesture: check.hold ? { kind: 'hold', seconds: check.hold } : { kind: 'press' },
-      requires: ['engine-off'],
-      readings: { [check.target]: reading },
-      tag: tagFor(check, severity),
-      effects: [{ fx: check.id === 'lights' ? 'lights-on' : check.id === 'oil' ? 'dipstick' : 'inspect' }],
-    };
-    if (check.id === 'coolant' && ev) {
-      step.label = 'Check the battery coolant';
-      step.say =
-        'The battery and motor have their own coolant loop. Check the level against the marks on the reservoir. Then make your call.';
-    }
-    if (check.id === 'coolant' && !ev) {
-      step.wrongTargets = {
-        'radiator-cap': {
-          code: 'inspection.coolant.hot_cap',
-          kind: 'safety',
-          label: 'Opened the radiator cap on a hot engine',
-          explain:
-            'A hot cooling system is under pressure, far above boiling. Opening the radiator cap sprays scalding coolant and steam. Read the level on the reservoir, and only open the cap when the engine is cold.',
-          consequence: 'hot-steam',
-        },
-      };
-    }
-    if (check.id === 'tires') {
-      step.say = `Measure the tread on the left front tire with the tread gauge. Under ${formatBoth('tread', 4, units)} is a yellow, and ${formatBoth('tread', 2, units)} is the legal minimum, so that is a red.`;
-    }
-    steps.push(step);
+    steps.push(checkStep(check, severity, vehicle, units, v.tread));
   }
 
   steps.push({
@@ -361,6 +319,75 @@ function inspectionSteps(vehicle: VehicleSpec, v: InspectionVariant, units: Unit
     gesture: { kind: 'press' },
     effects: [{ fx: 'hood-close' }, { fx: 'lights-off' }],
   });
-  void vehicle;
   return steps;
+}
+
+/** Tread depth (32nds) shown for a tire check at each severity. */
+function treadFor(vehicle: VehicleSpec, severity: Severity): number {
+  return severity === 0 ? vehicle.tires.newTread32 - 3 : severity === 1 ? 4 : 2;
+}
+
+function checkStep(
+  check: CheckDef,
+  severity: Severity,
+  vehicle: VehicleSpec,
+  units: UnitSystem,
+  tread: number,
+): StepDef {
+  const ev = !!vehicle.hv;
+  const reading: Reading =
+    check.id === 'tires'
+      ? { quantity: 'tread', value: tread, note: 'Deepest groove reading' }
+      : { text: check.findings[severity] ?? check.findings[0] };
+  const step: StepDef = {
+    id: `check-${check.id}`,
+    label: `Check the ${check.name}`,
+    say: `${check.say} Then make your call.`,
+    hint: check.hint,
+    spot: check.spot,
+    item: check.item ?? HAND,
+    targets: [check.target],
+    gesture: check.hold ? { kind: 'hold', seconds: check.hold } : { kind: 'press' },
+    requires: ['engine-off'],
+    readings: { [check.target]: reading },
+    tag: tagFor(check, severity),
+    effects: [{ fx: check.id === 'lights' ? 'lights-on' : check.id === 'oil' ? 'dipstick' : 'inspect' }],
+  };
+  if (check.id === 'coolant' && ev) {
+    step.label = 'Check the battery coolant';
+    step.say =
+      'The battery and motor have their own coolant loop. Check the level against the marks on the reservoir. Then make your call.';
+  }
+  if (check.id === 'coolant' && !ev) {
+    step.wrongTargets = {
+      'radiator-cap': {
+        code: 'inspection.coolant.hot_cap',
+        kind: 'safety',
+        label: 'Opened the radiator cap on a hot engine',
+        explain:
+          'A hot cooling system is under pressure, far above boiling. Opening the radiator cap sprays scalding coolant and steam. Read the level on the reservoir, and only open the cap when the engine is cold.',
+        consequence: 'hot-steam',
+      },
+    };
+  }
+  if (check.id === 'tires') {
+    step.say = `Measure the tread on the left front tire with the tread gauge. Under ${formatBoth('tread', 4, units)} is a yellow, and ${formatBoth('tread', 2, units)} is the legal minimum, so that is a red.`;
+  }
+  return step;
+}
+
+/**
+ * A single inspection check tacked onto the end of a Shop job (a courtesy
+ * look at the wipers or tires). The part may really be worn, or it may be fine:
+ * the student has to make an honest call.
+ */
+export function courtesyCheck(checkId: string, severity: Severity, vehicle: VehicleSpec, units: UnitSystem): StepDef {
+  const check = CHECKS.find((c) => c.id === checkId);
+  if (!check) throw new Error(`Unknown check ${checkId}`);
+  const sev = (check.findings[severity] === null ? 0 : severity) as Severity;
+  const step = checkStep(check, sev, vehicle, units, treadFor(vehicle, sev));
+  step.id = `extra-${check.id}`;
+  step.label = `Courtesy check: ${check.name}`;
+  step.requires = undefined;
+  return step;
 }

@@ -1,4 +1,5 @@
 import type { LessonId, Mode, RunResult } from '../lessons/engine/types';
+import { newShop, type ShopSave, sanitizeShop } from '../shop/model';
 import { DEFAULT_SETTINGS, type Settings, sanitizeSettings } from './settings';
 
 /**
@@ -29,6 +30,8 @@ export interface Profile {
   createdAt: string;
   lessons: Partial<Record<LessonId, LessonProgress>>;
   runs: RunRecord[];
+  /** Shop mode career. Missing on profiles that never opened the shop. */
+  shop?: ShopSave;
 }
 
 export interface SaveData {
@@ -75,6 +78,7 @@ export class SaveStore {
       const parsed = JSON.parse(raw) as Partial<SaveData>;
       if (parsed.version !== 1 || !Array.isArray(parsed.profiles)) return emptySave();
       const profiles = parsed.profiles.filter(isProfile);
+      for (const p of profiles) if (p.shop !== undefined) p.shop = sanitizeShop(p.shop);
       const active = profiles.some((p) => p.id === parsed.activeProfileId) ? (parsed.activeProfileId ?? null) : null;
       return { version: 1, profiles, activeProfileId: active, settings: sanitizeSettings(parsed.settings) };
     } catch {
@@ -134,6 +138,14 @@ export class SaveStore {
         certificateDate: null,
       }
     );
+  }
+
+  /** The active profile's Shop career (a fresh one if it has none yet, or no profile is active). */
+  shop(): ShopSave {
+    const profile = this.activeProfile;
+    if (!profile) return newShop();
+    profile.shop ??= newShop();
+    return profile.shop;
   }
 
   /** Records a finished run on the active profile and updates lesson progress. */
