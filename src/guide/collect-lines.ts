@@ -2,6 +2,7 @@ import { createRng } from '../core/random';
 import type { UnitSystem } from '../core/units';
 import { LESSONS } from '../lessons/content';
 import type { MistakeDef, StepDef } from '../lessons/engine/types';
+import { customerLines } from '../shop/talk';
 import { VEHICLES } from '../vehicles/specs';
 import { LINES } from './lines';
 
@@ -53,4 +54,15 @@ export function collectLines(seeds = 300): string[] {
     }
   }
   return [...lines].filter((l) => l.trim().length > 0);
+}
+
+export interface SpokenLine {
+  text: string;
+  /** Undefined for Valkyrie; a customer's voice key otherwise. */
+  speaker?: string;
+}
+
+/** Every line to pre-record: Valkyrie's, then each Shop customer's in their own voice. */
+export function collectSpoken(seeds = 300): SpokenLine[] {
+  return [...collectLines(seeds).map((text) => ({ text })), ...customerLines()];
 }

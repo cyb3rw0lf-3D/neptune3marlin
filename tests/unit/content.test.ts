@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import manifest from '../../public/audio/narration/manifest.json';
 import { createRng } from '../../src/core/random';
 import type { UnitSystem } from '../../src/core/units';
-import { BUILT_VEHICLES, collectLines } from '../../src/guide/collect-lines';
+import { BUILT_VEHICLES, collectSpoken } from '../../src/guide/collect-lines';
 import { lineKey } from '../../src/guide/narration';
 import { ITEMS } from '../../src/interaction/item-catalog';
 import { LESSONS } from '../../src/lessons/content';
@@ -122,8 +122,8 @@ describe('lesson content', () => {
   });
 
   it('has a recorded narration clip for every scripted line', () => {
-    const clips = (manifest as { clips: Record<string, string> }).clips;
-    const missing = collectLines().filter((line) => !clips[lineKey(line)]);
+    const clips = (manifest as { clips: Record<string, unknown> }).clips;
+    const missing = collectSpoken().filter((line) => !clips[lineKey(line.text, line.speaker)]);
     expect(missing, 'run scripts/gen-narration.mjs').toEqual([]);
   });
 });
