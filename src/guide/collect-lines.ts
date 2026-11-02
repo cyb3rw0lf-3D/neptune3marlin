@@ -6,17 +6,21 @@ import { VEHICLES } from '../vehicles/specs';
 import { LINES } from './lines';
 
 /** Vehicles that have 3D models so far. */
-export const BUILT_VEHICLES = ['sedan'] as const;
+export const BUILT_VEHICLES = ['sedan', 'pickup'] as const;
 
 function stepLines(step: StepDef): string[] {
   const out = [step.say, step.hint];
   if (step.why) out.push(step.why);
   if (step.choice?.right) out.push(step.choice.right);
+  if (step.tag?.right) out.push(step.tag.right);
   const mistakes: (MistakeDef | undefined)[] = [
     step.skipMistake,
     step.orderMistake,
     step.wrongItem,
     step.choice?.wrong,
+    step.tag?.wrong,
+    ...Object.values(step.choice?.wrongByOption ?? {}),
+    ...Object.values(step.tag?.wrongByOption ?? {}),
     step.measure?.over,
     step.measure?.under,
     ...Object.values(step.wrongItems ?? {}),

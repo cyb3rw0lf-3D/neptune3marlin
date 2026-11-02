@@ -15,7 +15,9 @@ import type { SoundFx } from '../audio/sfx';
 import type { Tweens } from '../core/tween';
 import type { Pointer } from '../input/pointer';
 
-const DESKTOP_EYE = 1.62;
+export const DESKTOP_EYE = 1.62;
+/** Eye height when crouching at low work (wheels, jack points) on a flat screen. */
+export const CROUCH_EYE = 1.0;
 const ROOM = { minX: -6.6, maxX: 6.6, minZ: -5.6, maxZ: 5.6 };
 const ARC_POINTS = 40;
 const _v = new Vector3();
@@ -35,6 +37,8 @@ export class Locomotion {
   private turnLatch = false;
   snapDegrees = 45;
   heightOffset = 0;
+  /** Flat-screen eye height; work spots near the floor lower it, and C toggles a crouch. */
+  desktopEye = DESKTOP_EYE;
   seated = false;
   /** Returns true if a floor point is allowed (not inside the car, inside the room). */
   isFloorAllowed: (p: Vector3) => boolean = () => true;
@@ -74,7 +78,8 @@ export class Locomotion {
       this.camera.position.set(0, 0, 0);
     } else {
       this.rig.position.y = 0;
-      this.camera.position.set(0, DESKTOP_EYE + (this.seated ? -0.35 : 0) + this.heightOffset, 0);
+      const seat = this.seated && this.desktopEye === DESKTOP_EYE ? -0.35 : 0;
+      this.camera.position.set(0, this.desktopEye + seat + this.heightOffset, 0);
     }
   }
 

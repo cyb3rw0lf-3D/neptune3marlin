@@ -116,6 +116,98 @@ export function buildItemModel(id: string): ItemModel {
           .torus(0.03, 0.008, C.oilAmber, { p: [0, 0.07, 0.06], r: [0, Math.PI / 2, 0] }, 4, 8);
         col = boxCollider(0.16, 0.3, 0.14);
         break;
+      case 'breaker-bar':
+        b.box(0.024, 0.024, 0.5, C.chrome, { p: [0, 0, 0.14] })
+          .box(0.03, 0.03, 0.12, C.black, { p: [0, 0, 0.36] })
+          .cyl(0.024, 0.024, 0.03, 10, C.chrome, { p: [0, 0, -0.12] })
+          .cyl(0.02, 0.02, 0.05, 6, C.steel, { p: [0, 0, -0.16], r: [Math.PI / 2, 0, 0] });
+        col = boxCollider(0.07, 0.07, 0.6);
+        break;
+      case 'brake-gauge':
+        // Color-coded pad thickness gauges on a ring.
+        b.torus(0.03, 0.004, C.chrome, { p: [0, 0, 0.05], r: [Math.PI / 2, 0, 0] }, 4, 10)
+          .box(0.03, 0.006, 0.08, C.green, { p: [0, 0.006, -0.02] })
+          .box(0.03, 0.006, 0.08, C.safetyYellow, { p: [0, 0, -0.025] })
+          .box(0.03, 0.006, 0.08, C.safetyRed, { p: [0, -0.006, -0.03] });
+        col = boxCollider(0.08, 0.06, 0.18);
+        break;
+      case 'micrometer':
+        b.torus(0.04, 0.007, C.darkSteel, { p: [0, 0, -0.02], r: [0, Math.PI / 2, 0] }, 4, 10)
+          .cyl(0.012, 0.012, 0.09, 8, C.chrome, { p: [0, 0.03, 0.06], r: [Math.PI / 2, 0, 0] })
+          .box(0.03, 0.02, 0.04, C.white, { p: [0, 0.03, 0.02] });
+        col = boxCollider(0.08, 0.1, 0.18);
+        break;
+      case 'brake-grease':
+        b.cyl(0.016, 0.016, 0.1, 8, 0x8b5fbf, { p: [0, 0, 0.03], r: [Math.PI / 2, 0, 0] }).cyl(
+          0.008,
+          0.004,
+          0.03,
+          6,
+          C.white,
+          { p: [0, 0, -0.035], r: [Math.PI / 2, 0, 0] },
+        );
+        col = boxCollider(0.07, 0.07, 0.16);
+        break;
+      case 'piston-tool':
+        b.box(0.03, 0.12, 0.02, C.darkSteel, { p: [0, 0, 0.02] })
+          .cyl(0.008, 0.008, 0.12, 6, C.chrome, { p: [0, 0.02, -0.03], r: [Math.PI / 2, 0, 0] })
+          .box(0.05, 0.05, 0.008, C.chrome, { p: [0, 0.02, -0.09] })
+          .box(0.08, 0.016, 0.016, C.black, { p: [0, 0.02, 0.09] });
+        col = boxCollider(0.1, 0.14, 0.22);
+        break;
+      case 'new-pads':
+        b.box(0.12, 0.06, 0.04, 0xe9e2d0).box(0.122, 0.02, 0.042, 0xd8432f, { p: [0, 0.01, 0] });
+        col = boxCollider(0.16, 0.1, 0.1);
+        break;
+      case 'multimeter':
+        b.box(0.07, 0.025, 0.12, C.safetyYellow, { p: [0, 0, 0.03] })
+          .box(0.05, 0.004, 0.035, 0x9fd3b0, { p: [0, 0.014, 0.0] })
+          .cyl(0.003, 0.003, 0.1, 4, C.safetyRed, { p: [0.02, 0, -0.07], r: [Math.PI / 2, 0, 0] })
+          .cyl(0.003, 0.003, 0.1, 4, C.black, { p: [-0.02, 0, -0.07], r: [Math.PI / 2, 0, 0] });
+        col = boxCollider(0.1, 0.07, 0.26);
+        break;
+      case 'battery-tester':
+        b.box(0.1, 0.05, 0.14, 0x2f6fd6, { p: [0, 0, 0.04] })
+          .box(0.07, 0.004, 0.04, 0x9fd3b0, { p: [0, 0.027, 0.02] })
+          .box(0.02, 0.03, 0.04, C.safetyRed, { p: [0.03, 0, -0.06] })
+          .box(0.02, 0.03, 0.04, C.black, { p: [-0.03, 0, -0.06] });
+        col = boxCollider(0.12, 0.08, 0.22);
+        break;
+      case 'terminal-brush':
+        b.cyl(0.014, 0.014, 0.1, 6, C.safetyRed, { p: [0, 0, 0.04], r: [Math.PI / 2, 0, 0] }).cyl(
+          0.018,
+          0.018,
+          0.04,
+          8,
+          0xb0b0b0,
+          { p: [0, 0, -0.03], r: [Math.PI / 2, 0, 0] },
+        );
+        col = boxCollider(0.07, 0.07, 0.16);
+        break;
+      case 'jumper-cables':
+        b.torus(0.07, 0.012, C.safetyRed, { p: [0, 0, 0.02], r: [Math.PI / 2, 0, 0] }, 4, 10)
+          .torus(0.06, 0.012, 0x1a1c1e, { p: [0, 0.02, 0.02], r: [Math.PI / 2, 0, 0] }, 4, 10)
+          .box(0.03, 0.04, 0.06, C.safetyRed, { p: [0.03, 0, -0.08] })
+          .box(0.03, 0.04, 0.06, C.black, { p: [-0.03, 0, -0.08] });
+        col = boxCollider(0.18, 0.08, 0.24);
+        break;
+      case 'pack-clamps':
+        b.box(0.03, 0.04, 0.06, C.safetyRed, { p: [0.03, 0, -0.03] }).box(0.03, 0.04, 0.06, C.black, {
+          p: [-0.03, 0, -0.03],
+        });
+        col = boxCollider(0.12, 0.08, 0.12);
+        break;
+      case 'battery-new':
+      case 'battery-wrong': {
+        const big = id === 'battery-new';
+        const w = big ? 0.24 : 0.2;
+        b.box(w, 0.16, 0.17, C.black, { p: [0, 0.08, 0] })
+          .box(w * 0.98, 0.012, 0.168, big ? 0x2e6b3a : 0x7a1f1a, { p: [0, 0.16, 0] })
+          .cyl(0.015, 0.015, 0.03, 6, C.safetyRed, { p: [-w * 0.2, 0.17, 0.05] })
+          .cyl(0.015, 0.015, 0.03, 6, C.darkSteel, { p: [w * 0.25, 0.17, 0.05] });
+        col = boxCollider(w + 0.04, 0.22, 0.2);
+        break;
+      }
       default:
         b.box(0.05, 0.05, 0.05, C.white);
         col = boxCollider(0.08, 0.08, 0.08);

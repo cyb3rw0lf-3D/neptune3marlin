@@ -14,7 +14,7 @@ const OIL_SPILL: MistakeDef = {
   kind: 'procedure',
   label: 'Opened the drain plug with no drain pan underneath',
   explain:
-    'Without a drain pan, about four quarts of hot oil go all over the floor. That is a slip hazard, a burn risk and an environmental cleanup. Pan first, plug second.',
+    'Without a drain pan, several quarts of hot oil go all over the floor. That is a slip hazard, a burn risk and an environmental cleanup. Pan first, plug second.',
   consequence: 'oil-spill',
 };
 
@@ -86,6 +86,7 @@ export const oilChange: LessonDef<OilVariant> = {
   outro:
     'Nice work. Fresh oil, new filter, no leaks, and the old oil went to recycling. That is a professional oil change.',
   variant: (_rng, vehicle) => ({ grade: vehicle.oil?.grade ?? '0W-20' }),
+  stage: () => ({ drainPan: true, hoodOpen: true }),
   workOrder: (vehicle, v, units) => {
     const oil = vehicle.oil;
     if (!oil) return [];

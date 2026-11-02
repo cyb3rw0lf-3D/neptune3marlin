@@ -25,9 +25,11 @@ import {
   HAND,
   type ItemId,
   type LessonDef,
+  type LessonStage,
   type MistakeDef,
   type MistakeRecord,
   type Mode,
+  type Reading,
   type RunResult,
   type StepDef,
   type TargetId,
@@ -104,12 +106,14 @@ export class LessonSession implements InteractionHooks {
     this.busy = false;
 
     d.interaction().releaseAll(d.pointers());
+    d.markers.hideTag();
+    d.markers.hideReading();
+    d.world.setVehicle(vehicleId);
     d.world.reset();
     d.world.layoutCart(lesson.cartItems);
-    const oil = lesson.id === 'oil-change';
-    d.registry.setItemAvailable('drain-pan', oil);
-    d.world.drainPan.visible = oil;
-    if (oil) d.world.vehicle.setHoodOpen(true);
+    this.stage = lesson.stage?.(variant, vehicle) ?? {};
+    d.world.applyStage(this.stage);
+    this.applyFaults(this.stage.faults ?? []);
     this.workOrder = lesson.workOrder(vehicle, variant, this.units);
 
     d.hud.closeDialog();
@@ -133,6 +137,21 @@ export class LessonSession implements InteractionHooks {
   }
 
   private workOrder: string[] = [];
+  private stage: LessonStage = {};
+
+  /** Visible faults for the inspection lesson (others show up in readings). */
+  private applyFaults(faults: string[]): void {
+    const w = this.d.world;
+    w.vehicle.corrosion.visible = faults.includes('terminals');
+    if (faults.includes('leak')) {
+      const p = this.d.registry.targetWorldPosition('leak-check');
+      if (p) {
+        w.puddle.position.set(p.x - 0.35, 0.004, p.z + 0.1);
+        w.puddle.scale.setScalar(0.22);
+        w.puddle.visible = true;
+      }
+    }
+  }
 
   private begin(): void {
     this.d.hud.closeDialog();
@@ -143,6 +162,7 @@ export class LessonSession implements InteractionHooks {
   quit(): void {
     this.stopNarration();
     this.d.hud.closeDialog();
+    this.d.markers.hideTag();
     this.d.hud.showClipboard(null);
     this.unguide();
     this.d.markers.hideReading();
@@ -188,6 +208,10 @@ export class LessonSession implements InteractionHooks {
     if (!step) return;
     if (step.choice) {
       this.showChoice(step);
+      return;
+    }
+    if (r.awaitingTag) {
+      this.showTag(step);
       return;
     }
     if (this.mode === 'learn') {
@@ -246,12 +270,40 @@ export class LessonSession implements InteractionHooks {
     if (this.mode === 'learn') void this.narrate([step.say]);
   }
 
+  /** The green / yellow / red popup beside an inspected part. */
+  private showTag(step: StepDef): void {
+    const tag = step.tag;
+    const target = step.targets[step.targets.length - 1];
+    const entry = target ? this.d.registry.targets.get(target) : undefined;
+    if (!tag || !entry) return;
+    this.unguide();
+    this.d.valkyrie.setMood('thinking');
+    const reading = target ? step.readings?.[target] : undefined;
+    const finding = reading ? this.readingText(reading) : '';
+    this.d.markers.showTag(
+      entry.anchor,
+      `${entry.label}: ${tag.prompt}`,
+      finding + (reading?.note ? ` ${reading.note}` : ''),
+      tag.options,
+      (i) => this.answer(i),
+    );
+  }
+
+  private readingText(r: Reading): string {
+    if (r.text) return r.text;
+    if (r.quantity && r.value !== undefined) return format(r.quantity, r.value, this.units);
+    return '';
+  }
+
   answer(i: number): void {
     const r = this.runner;
     const step = r?.current;
-    if (!r || !step?.choice) return;
+    if (!r || !step || (!step.choice && !r.awaitingTag)) return;
+    // A tag popup can't be answered underneath a mistake dialog or the pause menu.
+    if (!step.choice && (this.busy || this.d.hud.isDialogOpen)) return;
     const v = r.answer(i);
     this.d.hud.closeDialog();
+    this.d.markers.hideTag();
     this.busy = false;
     if (v.kind === 'mistake') {
       void this.handleMistake(v.mistake, v.record, null).then(() => this.onStepStart());
@@ -260,10 +312,12 @@ export class LessonSession implements InteractionHooks {
     if (v.kind === 'done') {
       this.d.sfx.play('step');
       this.d.valkyrie.setMood('happy');
+      for (const e of v.effects) this.applyEffect(e, HAND, null);
       const after = () => (v.lessonDone ? this.finish() : this.onStepStart());
-      if (step.choice.right) {
+      const right = step.choice?.right ?? step.tag?.right;
+      if (right) {
         this.busy = true;
-        void this.narrate([step.choice.right]).then(() => {
+        void this.narrate([right]).then(() => {
           this.busy = false;
           after();
         });
@@ -317,7 +371,7 @@ export class LessonSession implements InteractionHooks {
   // --- InteractionHooks ---
 
   canAct(): boolean {
-    return !!this.runner && !this.busy && !this.d.hud.isDialogOpen;
+    return !!this.runner && !this.busy && !this.d.hud.isDialogOpen && !this.d.markers.tagOpen;
   }
 
   attempt(item: ItemId, target: TargetId): Verdict {
@@ -397,7 +451,16 @@ export class LessonSession implements InteractionHooks {
       return;
     }
     // Live effects while holding.
-    if (active.target === 'lift-up') {
+    const w = this.d.world;
+    if (active.target === 'jack-handle') {
+      const g = active.step.gesture;
+      const strokes = g.kind === 'pump' ? g.strokes : 4;
+      w.setJackRaise(active.step.id === 'jack-raise' ? progress : 0.97 + 0.09 * progress);
+      w.jack.pump(-0.35 * Math.abs(Math.sin(progress * strokes * Math.PI)));
+    } else if (active.target === 'jack-release') {
+      w.setJackRaise(active.step.id === 'lower' ? 1.06 * (1 - progress) : 1 - 0.03 * progress);
+      this.d.sfx.loop('gesture', 'hiss', 0.3);
+    } else if (active.target === 'lift-up') {
       this.d.world.setLiftHeight(RAISE_HEIGHT * progress);
       this.d.sfx.loop('gesture', 'lift', 0.5);
     } else if (active.target === 'lift-down') {
@@ -461,12 +524,7 @@ export class LessonSession implements InteractionHooks {
       const anchor = this.d.registry.targets.get(v.target)?.anchor;
       if (anchor) {
         const label = this.d.registry.targets.get(v.target)?.label ?? '';
-        this.d.markers.showReading(
-          anchor,
-          label,
-          format(v.reading.quantity, v.reading.value, this.units),
-          v.reading.note,
-        );
+        if (!v.tagPending) this.d.markers.showReading(anchor, label, this.readingText(v.reading), v.reading.note);
       }
     }
     if (v.mistake) {
@@ -481,6 +539,10 @@ export class LessonSession implements InteractionHooks {
   private afterDone(v: Extract<Verdict, { kind: 'done' }>): void {
     this.d.sfx.play(v.stepDone ? 'step' : 'click');
     this.refreshClipboard();
+    if (v.tagPending) {
+      this.onStepStart();
+      return;
+    }
     if (v.lessonDone) {
       this.busy = true;
       void this.d.tweens.wait(0.8).then(() => this.finish());
@@ -580,42 +642,62 @@ export class LessonSession implements InteractionHooks {
 
   // --- world effects ---
 
-  private applyEffect(e: Effect, item: ItemId, pointer: Pointer): void {
+  private applyEffect(e: Effect, item: ItemId, pointer: Pointer | null): void {
     const w = this.d.world;
+    const v = w.vehicle;
     const reg = this.d.registry;
     const tw = this.d.tweens;
+    const sfx = this.d.sfx;
     const arg = e.arg ?? '';
     const wheelOf = (id: string) => id.split('-').pop() as WheelPos;
+    const frontOf = (id: string) => (id.endsWith('FR') ? 'FR' : 'FL') as 'FL' | 'FR';
     const consume = (id: ItemId) => {
       this.d.interaction().consume(id);
       reg.setItemAvailable(id, false);
       if (id === 'torque-wrench') this.d.hud.showDial(null, '');
     };
+    /** Takes an item out of the hand and leaves it somewhere new (still in the world). */
+    const place = (id: ItemId, parent: Object3D, at: Vector3, grabbable: boolean) => {
+      this.d.interaction().consume(id);
+      reg.rehome(id, parent, at);
+      const entry = reg.items.get(id);
+      if (entry) {
+        entry.object.scale.setScalar(1);
+        entry.available = true;
+        entry.object.visible = true;
+        entry.collider.userData.enabled = grabbable;
+      }
+    };
     switch (e.fx) {
       case 'ppe':
         if (arg === 'ppe-glasses') w.ppeGlasses.visible = false;
         if (arg === 'ppe-gloves') w.ppeGloves.visible = false;
-        this.d.sfx.play('pickup');
+        sfx.play('pickup');
         break;
       case 'hood-open':
-        void tw.run(0.8, (t) => w.vehicle.setHoodOpen(true, ease.inOut(t)));
+        void tw.run(0.8, (t) => v.setHoodOpen(true, ease.inOut(t)));
         break;
       case 'hood-close':
-        void tw.run(0.8, (t) => w.vehicle.setHoodOpen(true, 1 - ease.inOut(t)));
+        void tw.run(0.8, (t) => v.setHoodOpen(true, 1 - ease.inOut(t)));
         break;
-      case 'fillcap-off':
+      case 'fillcap-off': {
+        const home = v.fillCapHome;
         void tw.run(0.5, (t) => {
-          w.vehicle.fillCap.position.set(1.72 + 0.25 * t, 0.875 + 0.1 * Math.sin(t * Math.PI), 0.18 + 0.45 * t);
+          v.fillCap.position.set(home.x + 0.25 * t, home.y + 0.1 * Math.sin(t * Math.PI), home.z + 0.45 * t);
         });
         break;
-      case 'fillcap-on':
+      }
+      case 'fillcap-on': {
+        const home = v.fillCapHome;
         void tw.run(0.5, (t) => {
-          w.vehicle.fillCap.position.set(1.97 - 0.25 * t, 0.875 + 0.1 * Math.sin(t * Math.PI), 0.63 - 0.45 * t);
+          const k = 1 - t;
+          v.fillCap.position.set(home.x + 0.25 * k, home.y + 0.1 * Math.sin(t * Math.PI), home.z + 0.45 * k);
         });
         break;
+      }
       case 'arm-place': {
         const pos = wheelOf(arg);
-        this.d.sfx.play('clunk');
+        sfx.play('clunk');
         void tw.run(0.6, (t) => w.lift.swingArm(pos, ease.inOut(t))).then(() => w.lift.setArmPlaced(pos, true));
         break;
       }
@@ -624,19 +706,20 @@ export class LessonSession implements InteractionHooks {
         break;
       case 'lift-lock':
         w.lift.setLocked(true);
-        this.d.sfx.play('clunk');
+        sfx.play('clunk');
         void tw.run(0.2, (t) => w.setLiftHeight(RAISE_HEIGHT - 0.03 * t));
         break;
       case 'lift-lower':
         w.lift.setLocked(false);
         w.setLiftHeight(0);
-        this.d.sfx.stopLoop('gesture');
+        sfx.stopLoop('gesture');
         if (
           reg.items.get('drain-pan')?.object.parent === w.scene &&
           !reg.items.get('drain-pan')?.collider.userData.enabled
         ) {
           // Slide the pan out from under the car so it can be carried to recycling.
-          reg.rehome('drain-pan', w.scene, new Vector3(2.75, 0, 1.15));
+          const plug = v.layout.at.drainPlug;
+          reg.rehome('drain-pan', w.scene, new Vector3(w.carX + plug[0] + 1.0, 0, 1.25));
           reg.items.get('drain-pan')!.collider.userData.enabled = true;
         }
         break;
@@ -648,12 +731,12 @@ export class LessonSession implements InteractionHooks {
         break;
       }
       case 'drain-oil': {
-        w.vehicle.drainPlug.visible = false;
+        v.drainPlug.visible = false;
         reg.setItemAvailable('drain-plug', true);
         reg.rehome('drain-plug', w.trayPlug, new Vector3());
         w.panOil.visible = true;
         w.oilStream.visible = true;
-        this.d.sfx.loop('drain', 'pour', 0.45);
+        sfx.loop('drain', 'pour', 0.45);
         void tw
           .run(4, (t) => {
             const from = reg.targetWorldPosition('drain-plug') ?? new Vector3();
@@ -663,71 +746,79 @@ export class LessonSession implements InteractionHooks {
           })
           .then(() => {
             w.oilStream.visible = false;
-            this.d.sfx.stopLoop('drain');
+            sfx.stopLoop('drain');
           });
         break;
       }
       case 'washer-new':
         consume('new-washer');
-        this.d.sfx.play('click');
+        sfx.play('click');
         break;
       case 'filter-off':
-        w.vehicle.oilFilter.visible = false;
-        this.d.sfx.play('drop');
+        v.oilFilter.visible = false;
+        sfx.play('drop');
         break;
       case 'mount-clean':
       case 'filter-lube':
-        this.d.sfx.play('click');
+      case 'placard':
+      case 'gauge-pressure':
+      case 'gauge-tread':
+      case 'inspect':
+      case 'pack-power':
+        sfx.play('click');
         break;
       case 'filter-on':
         consume('new-filter');
-        w.vehicle.oilFilter.visible = true;
+        v.oilFilter.visible = true;
         break;
       case 'plug-in':
         consume('drain-plug');
-        w.vehicle.drainPlug.visible = true;
+        v.drainPlug.visible = true;
         break;
       case 'plug-torque':
-        this.d.sfx.play('torque-click');
+        sfx.play('torque-click');
         break;
       case 'oil-pick': {
         for (const [grade, jug] of w.oilJugs)
           if (arg.endsWith(grade.toLowerCase().replace(/[^a-z0-9]/g, ''))) jug.visible = false;
         reg.setItemAvailable('oil-bottle', true);
-        this.d.sfx.play('pickup');
+        sfx.play('pickup');
         break;
       }
       case 'oil-fill':
-        this.d.sfx.stopLoop('gesture');
+      case 'inflate':
+        sfx.stopLoop('gesture');
         break;
       case 'engine-run':
-        this.d.sfx.play('engine');
+      case 'donor-start': {
+        sfx.play('engine');
+        const root = e.fx === 'donor-start' ? w.donor.root : v.root;
+        const x = root.position.x;
         void tw.run(1.5, (t) => {
-          w.vehicle.root.position.x = Math.sin(t * 90) * 0.0015;
+          root.position.x = x + Math.sin(t * 90) * 0.0015 * (1 - t);
         });
         break;
-      case 'dipstick':
+      }
+      case 'engine-off':
+        sfx.play('click');
+        v.setLights(false);
+        break;
+      case 'dipstick': {
+        const y = v.dipstickHome.y;
         void tw.run(1.6, (t) => {
-          w.vehicle.dipstick.position.y = 0.885 + Math.sin(t * Math.PI) * 0.4;
+          v.dipstick.position.y = y + Math.sin(t * Math.PI) * 0.4;
         });
         break;
+      }
       case 'oil-recycle':
         w.panOil.visible = false;
-        this.d.sfx.stopLoop('gesture');
-        break;
-      case 'placard':
-      case 'gauge-pressure':
-      case 'gauge-tread':
-        this.d.sfx.play('click');
-        break;
-      case 'inflate':
-        this.d.sfx.stopLoop('gesture');
+        sfx.stopLoop('gesture');
         break;
       case 'wheel-off': {
         const pos = wheelOf(arg);
-        const part = w.vehicle.removeWheel(pos);
+        const part = v.removeWheel(pos);
         if (part) w.parkWheel(part.origin, pos);
-        this.d.sfx.stopLoop('gesture');
+        sfx.stopLoop('gesture');
         break;
       }
       case 'wheel-place': {
@@ -735,34 +826,182 @@ export class LessonSession implements InteractionHooks {
         const origin = item.startsWith('wheel-') ? (item.slice(6) as WheelPos) : null;
         if (!origin) break;
         this.d.interaction().consume(item);
-        w.vehicle.mountWheel(hubPos, origin);
+        v.mountWheel(hubPos, origin);
         const entry = reg.items.get(item);
         if (entry) {
           entry.home = {
-            parent: w.vehicle.wheels[hubPos].hub,
+            parent: v.wheels[hubPos].hub,
             position: new Vector3(),
             quaternion: entry.object.quaternion.clone().identity(),
           };
           entry.collider.userData.enabled = false;
         }
-        this.d.sfx.play('clunk');
+        sfx.play('clunk');
         break;
       }
       case 'lugs-hand':
-        w.vehicle.setLugsVisible(wheelOf(arg), true);
+        v.setLugsVisible(wheelOf(arg), true);
         break;
       case 'lug-torque': {
         const parts = arg.split('-');
-        w.vehicle.markLug(parts[1] as WheelPos, Number(parts[2]));
-        this.d.sfx.play('torque-click');
+        v.markLug(parts[1] as WheelPos, Number(parts[2]));
+        sfx.play('torque-click');
         break;
       }
       case 'wheel-torque': {
         const pos = wheelOf(arg);
-        for (let i = 0; i < w.vehicle.spec.tires.lugsPerWheel; i++) w.vehicle.markLug(pos, i);
-        this.d.sfx.play('torque-click');
+        for (let i = 0; i < v.spec.tires.lugsPerWheel; i++) v.markLug(pos, i);
+        sfx.play('torque-click');
         break;
       }
+      // --- brakes ---
+      case 'chock':
+        w.placeChock(arg.endsWith('RR') ? 1 : 0);
+        sfx.play('clunk');
+        break;
+      case 'jack-place':
+        w.placeJack();
+        sfx.play('clunk');
+        break;
+      case 'jack-raise':
+        w.setJackRaise(1);
+        w.jack.pump(0);
+        break;
+      case 'stand-place':
+        w.placeStand(arg.endsWith('FR') ? 1 : 0, true);
+        sfx.play('clunk');
+        break;
+      case 'stands-out':
+        w.setJackRaise(1.06);
+        w.placeStand(0, false);
+        w.placeStand(1, false);
+        w.jack.pump(0);
+        sfx.play('clunk');
+        break;
+      case 'jack-lower': {
+        const from = w.jackRaise;
+        const to = arg === 'ground' ? 0 : 0.97;
+        sfx.play('hiss');
+        void tw.run(arg === 'ground' ? 1.2 : 0.4, (t) => w.setJackRaise(from + (to - from) * ease.inOut(t)));
+        break;
+      }
+      case 'shake': {
+        const root = v.root;
+        sfx.play('clunk');
+        void tw.run(0.8, (t) => {
+          root.rotation.x = Math.sin(t * 40) * 0.006 * (1 - t);
+        });
+        break;
+      }
+      case 'caliper-off': {
+        const cal = reg.items.get(`caliper-${frontOf(arg)}`);
+        if (cal) cal.collider.userData.enabled = true;
+        sfx.play('ratchet');
+        break;
+      }
+      case 'caliper-hang': {
+        const pos = frontOf(arg);
+        const b = v.brakes[pos];
+        place(`caliper-${pos}`, v.wheels[pos].hub, b.caliperHung, true);
+        v.setCaliper(pos, 'hung');
+        const cal = reg.items.get(`caliper-${pos}`);
+        if (cal) cal.home.quaternion.copy(b.caliper.quaternion);
+        sfx.play('clunk');
+        break;
+      }
+      case 'caliper-on': {
+        const pos = frontOf(arg);
+        const b = v.brakes[pos];
+        place(`caliper-${pos}`, v.wheels[pos].hub, b.caliperHome, false);
+        v.setCaliper(pos, 'home');
+        const cal = reg.items.get(`caliper-${pos}`);
+        if (cal) cal.home.quaternion.copy(b.caliper.quaternion);
+        sfx.play('clunk');
+        break;
+      }
+      case 'pads-out': {
+        const pos = frontOf(arg);
+        const pad = v.brakes[pos].pads[arg.startsWith('pad-outer') ? 0 : 1];
+        if (pad) pad.visible = false;
+        sfx.play('drop');
+        break;
+      }
+      case 'pads-in':
+        consume('new-pads');
+        v.setPadsVisible(frontOf(arg), true);
+        sfx.play('click');
+        break;
+      case 'piston': {
+        const res = reg.targets.get('brake-reservoir');
+        if (res)
+          this.d.markers.showReading(
+            res.anchor,
+            'Brake fluid reservoir',
+            'Level rose to MAX',
+            'Fluid pushed back from the caliper',
+          );
+        break;
+      }
+      case 'pedal':
+        sfx.play('click');
+        void tw.wait(0.3).then(() => sfx.play('click'));
+        break;
+      case 'drive-off':
+        sfx.play('engine');
+        break;
+      // --- battery ---
+      case 'cable-off':
+        v.setCable(arg.endsWith('neg') ? 'neg' : 'pos', false);
+        sfx.play('click');
+        break;
+      case 'cable-on':
+        v.setCable(arg.endsWith('neg') ? 'neg' : 'pos', true);
+        sfx.play('click');
+        break;
+      case 'holddown':
+        sfx.play('ratchet');
+        break;
+      case 'battery-out': {
+        const L = v.layout;
+        const floor = new Vector3(w.carX + L.at.battery[0] + 0.3, 0.09, -L.halfWidth - 0.35);
+        place('old-battery', w.scene, floor, true);
+        sfx.play('clunk');
+        break;
+      }
+      case 'battery-core':
+        place('old-battery', w.coreShelf, new Vector3(0, 0.08, 0), false);
+        sfx.play('clunk');
+        break;
+      case 'battery-in': {
+        const pos = v.batteryHome.clone().add(new Vector3(0, -v.layout.at.batterySize[1] / 2, 0));
+        place('battery-new', v.root, pos, false);
+        const entry = reg.items.get('battery-new');
+        if (entry) entry.object.quaternion.identity();
+        sfx.play('clunk');
+        break;
+      }
+      case 'clean':
+        v.corrosion.visible = false;
+        sfx.play('ratchet');
+        break;
+      case 'clamp-on':
+        w.setClamp(arg, true);
+        sfx.play('click');
+        break;
+      case 'clamp-off':
+        w.setClamp(arg, false);
+        sfx.play('click');
+        break;
+      // --- inspection ---
+      case 'lights-on': {
+        const out = (this.stage.faults ?? []).find((f) => f.startsWith('lamp-'));
+        v.setLights(true, out ?? null);
+        sfx.play('click');
+        break;
+      }
+      case 'lights-off':
+        v.setLights(false);
+        break;
     }
     void pointer;
   }

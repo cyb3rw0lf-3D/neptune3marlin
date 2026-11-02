@@ -22,7 +22,9 @@ export const HAND = 'hand';
 export type Gesture =
   | { kind: 'press' }
   | { kind: 'hold'; seconds: number }
-  | { kind: 'twist'; turns: number; dir: 'cw' | 'ccw' };
+  | { kind: 'twist'; turns: number; dir: 'cw' | 'ccw' }
+  /** Pump a handle up and down (floor jack). */
+  | { kind: 'pump'; strokes: number };
 
 /**
  * wrong-item: the wrong tool or part. order: a step done too early.
@@ -61,7 +63,14 @@ export type ConsequenceId =
   | 'wheel-wobble'
   | 'overfill'
   | 'tire-overinflate'
-  | 'buzz';
+  | 'buzz'
+  | 'car-slip'
+  | 'caliper-hose'
+  | 'spark'
+  | 'pedal-sink'
+  | 'fan-spin'
+  | 'hot-steam'
+  | 'wheel-spin';
 
 export interface Measure {
   quantity: Quantity;
@@ -84,13 +93,17 @@ export interface Choice {
   options: string[];
   correct: number;
   wrong: MistakeDef;
+  /** A different mistake for particular wrong options (e.g. missing a fault vs. flagging a good part). */
+  wrongByOption?: Record<number, MistakeDef>;
   /** Spoken after a correct answer. */
   right?: string;
 }
 
 export interface Reading {
-  quantity: Quantity;
-  value: number;
+  quantity?: Quantity;
+  value?: number;
+  /** Shown instead of a number for things judged by eye ("Deep cracks across the ribs"). */
+  text?: string;
   note?: string;
 }
 
@@ -126,7 +139,37 @@ export type FxName =
   | 'wheel-place'
   | 'lugs-hand'
   | 'lug-torque'
-  | 'wheel-torque';
+  | 'wheel-torque'
+  | 'chock'
+  | 'jack-place'
+  | 'jack-raise'
+  | 'stand-place'
+  | 'stands-out'
+  | 'jack-lower'
+  | 'shake'
+  | 'caliper-off'
+  | 'caliper-hang'
+  | 'caliper-on'
+  | 'pads-out'
+  | 'pads-in'
+  | 'piston'
+  | 'pedal'
+  | 'drive-off'
+  | 'cable-off'
+  | 'cable-on'
+  | 'holddown'
+  | 'battery-out'
+  | 'battery-in'
+  | 'battery-core'
+  | 'clean'
+  | 'clamp-on'
+  | 'clamp-off'
+  | 'pack-power'
+  | 'donor-start'
+  | 'lights-on'
+  | 'lights-off'
+  | 'engine-off'
+  | 'inspect';
 
 export interface Effect {
   fx: FxName;
@@ -169,8 +212,25 @@ export interface StepDef {
   /** Applied once the whole step completes. */
   stepEffects?: Effect[];
   readings?: Record<TargetId, Reading>;
+  /**
+   * Inspection call made right after the targets are done: the student tags the
+   * part green, yellow or red on a popup beside it. The step finishes on the right call.
+   */
+  tag?: Choice;
   /** Marked as a safety step on the checklist. */
   safety?: boolean;
+}
+
+/** How a lesson wants the bay set up (see World.applyStage). */
+export interface LessonStage {
+  carNoseX?: number;
+  donor?: boolean;
+  jumpPack?: boolean;
+  jack?: boolean;
+  hoodOpen?: boolean;
+  drainPan?: boolean;
+  /** Visible faults for the inspection lesson. */
+  faults?: string[];
 }
 
 export interface LessonDef<V = unknown> {
@@ -187,6 +247,8 @@ export interface LessonDef<V = unknown> {
   variant(rng: Rng, vehicle: VehicleSpec): V;
   /** Specs printed on the clipboard work order. */
   workOrder(vehicle: VehicleSpec, variant: V, units: UnitSystem): string[];
+  /** Bay arrangement for this run. */
+  stage?(variant: V, vehicle: VehicleSpec): LessonStage;
   steps(vehicle: VehicleSpec, variant: V, units: UnitSystem): StepDef[];
 }
 

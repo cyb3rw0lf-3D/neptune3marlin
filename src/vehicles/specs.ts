@@ -13,6 +13,17 @@ export interface VehicleSpec {
   engine: string;
   oil: { grade: string; capacityQt: number; drainPlugTorque: number; drainPlugSocketMm: number } | null;
   tires: { size: string; pressurePsi: number; lugTorque: number; lugsPerWheel: number; newTread32: number };
+  /** Front brakes. Rotor thickness is in inches (the minimum is cast into the rotor). */
+  brakes: {
+    padMinMm: number;
+    padNewMm: number;
+    rotorMinIn: number;
+    rotorNewIn: number;
+    caliperBoltMm: number;
+    caliperBoltTorque: number;
+  };
+  /** 12-volt battery: BCI group size and cold cranking amps. */
+  battery: { group: string; cca: number; wrongGroup: string };
 }
 
 export const VEHICLES: Record<VehicleId, VehicleSpec> = {
@@ -24,6 +35,15 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
     engine: '2.0 L four-cylinder',
     oil: { grade: '0W-20', capacityQt: 4.4, drainPlugTorque: 30, drainPlugSocketMm: 14 },
     tires: { size: '215/55R17', pressurePsi: 35, lugTorque: 80, lugsPerWheel: 5, newTread32: 10 },
+    brakes: {
+      padMinMm: 3,
+      padNewMm: 11,
+      rotorMinIn: 0.984,
+      rotorNewIn: 1.063,
+      caliperBoltMm: 14,
+      caliperBoltTorque: 26,
+    },
+    battery: { group: '35', cca: 640, wrongGroup: '51R' },
   },
   pickup: {
     id: 'pickup',
@@ -33,6 +53,15 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
     engine: '3.5 L V6',
     oil: { grade: '5W-30', capacityQt: 6.0, drainPlugTorque: 20, drainPlugSocketMm: 17 },
     tires: { size: 'LT265/70R17', pressurePsi: 40, lugTorque: 150, lugsPerWheel: 6, newTread32: 15 },
+    brakes: {
+      padMinMm: 3,
+      padNewMm: 12,
+      rotorMinIn: 1.26,
+      rotorNewIn: 1.339,
+      caliperBoltMm: 17,
+      caliperBoltTorque: 30,
+    },
+    battery: { group: '65', cca: 750, wrongGroup: '35' },
   },
   ev: {
     id: 'ev',
@@ -42,6 +71,15 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
     engine: 'Electric motor, 400 V battery',
     oil: null,
     tires: { size: '235/45R19', pressurePsi: 42, lugTorque: 120, lugsPerWheel: 5, newTread32: 10 },
+    brakes: {
+      padMinMm: 3,
+      padNewMm: 11,
+      rotorMinIn: 0.945,
+      rotorNewIn: 1.024,
+      caliperBoltMm: 14,
+      caliperBoltTorque: 26,
+    },
+    battery: { group: 'H5', cca: 550, wrongGroup: '35' },
   },
 };
 

@@ -29,13 +29,16 @@ export const LIFT_NOT_LOCKED: MistakeDef = {
   consequence: 'car-drop',
 };
 
-export function ppeStep(): StepDef {
+const PPE_WHY =
+  'Nitrile gloves keep used oil off your skin. It contains chemicals you should not soak into your hands every day.';
+
+export function ppeStep(why = PPE_WHY): StepDef {
   return {
     id: 'ppe',
     label: 'Put on safety glasses and gloves',
     say: 'Safety first. Grab the safety glasses and the nitrile gloves from the top of the tool cart.',
     hint: 'Your personal protective equipment is on the top shelf of the tool cart.',
-    why: 'Nitrile gloves keep used oil off your skin. It contains chemicals you should not soak into your hands every day.',
+    why,
     spot: 'cart',
     item: HAND,
     targets: ['ppe-glasses', 'ppe-gloves'],

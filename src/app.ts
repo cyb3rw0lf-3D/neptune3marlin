@@ -15,7 +15,7 @@ import { type PickInfo, Registry } from './interaction/registry';
 import { ConsequencePlayer } from './lessons/consequences';
 import type { LessonDef, Mode, VehicleId } from './lessons/engine/types';
 import { type FinishInfo, LessonSession } from './lessons/session';
-import { Locomotion } from './locomotion/locomotion';
+import { CROUCH_EYE, DESKTOP_EYE, Locomotion } from './locomotion/locomotion';
 import { type DialogButton, Hud } from './ui/hud';
 import { Markers } from './ui/markers';
 import { Menus } from './ui/menus';
@@ -67,7 +67,7 @@ export class App {
     this.narrator = new Narrator(import.meta.env.BASE_URL);
     this.locomotion = new Locomotion(this.camera, this.tweens, this.sfx);
     scene.add(this.locomotion.rig, this.locomotion.arcLine);
-    this.locomotion.isFloorAllowed = (p) => this.floorAllowed(p);
+    this.locomotion.isFloorAllowed = (p) => this.world.isWalkable(p);
 
     scene.add(this.hud.root, this.markers.root);
     this.valkyrie.attach(scene);
@@ -109,7 +109,7 @@ export class App {
       teleport: (id) => this.teleportTo(id),
     });
     this.interaction = new Interaction(this.registry, this.session, this.sfx);
-    this.interaction.panels = [this.menus.panel, ...this.hud.panels];
+    this.interaction.panels = [this.menus.panel, ...this.hud.panels, this.markers.tag];
     this.session.onFinish = (info) => this.showReport(info);
     this.session.onQuit = () => this.toMenu();
     this.hud.onHint = () => this.session.hint();
@@ -140,14 +140,6 @@ export class App {
 
   pointers(): Pointer[] {
     return this.renderer.xr.isPresenting ? this.xrInput.pointers : [this.desktop.pointer];
-  }
-
-  private floorAllowed(p: Vector3): boolean {
-    const raised = this.world.lift.height > 1.2;
-    const inCar = p.x > -2.45 && p.x < 2.45 && p.z > -1.05 && p.z < 1.05;
-    if (inCar && !raised) return false;
-    const nearPost = Math.abs(p.x + 0.05) < 0.35 && Math.abs(Math.abs(p.z) - 1.45) < 0.35;
-    return !nearPost;
   }
 
   private onResize(): void {
@@ -184,7 +176,11 @@ export class App {
   teleportTo(spotId: string, instant = false): void {
     const spot = this.world.spots.get(spotId);
     if (!spot?.enabled) return;
-    if (!this.renderer.xr.isPresenting) this.locomotion.setPitch(spot.pitch * 0.8);
+    if (!this.renderer.xr.isPresenting) {
+      this.locomotion.desktopEye = spot.eye;
+      this.locomotion.applyHeight(false);
+      this.locomotion.setPitch(spot.pitch * 0.8);
+    }
     void this.locomotion.teleport(spot.position, spot.yaw, instant).then(() => {
       this.hud.update(0, this.camera, true);
       this.valkyrie.snapHome(this.camera);
@@ -256,7 +252,13 @@ export class App {
     this.onRecordsChanged();
   }
 
-  startLesson(lesson: LessonDef, mode: Mode, vehicle: VehicleId, seed?: number): void {
+  startLesson(lesson: LessonDef, mode: Mode, chosen: VehicleId, seed?: number): void {
+    // A Test can be on any vehicle the lesson supports, so the procedure is learned, not the car.
+    const options = lesson.vehicles.filter((v) => this.world.vehicles.has(v));
+    const vehicle =
+      mode === 'test' && seed === undefined && options.length > 0
+        ? (options[Math.floor(Math.random() * options.length)] as VehicleId)
+        : chosen;
     this.menus.close();
     this.paused = false;
     this.screen = 'lesson';
@@ -285,6 +287,9 @@ export class App {
       else this.pause();
     } else if (key.toLowerCase() === 'h') {
       this.session.hint();
+    } else if (key.toLowerCase() === 'c' && !this.renderer.xr.isPresenting) {
+      this.locomotion.desktopEye = this.locomotion.desktopEye === DESKTOP_EYE ? CROUCH_EYE : DESKTOP_EYE;
+      this.locomotion.applyHeight(false);
     } else if (key.toLowerCase() === 'q' || key.toLowerCase() === 'e') {
       // Drop the held item back where it belongs.
       this.interaction.release(this.desktop.pointer);
