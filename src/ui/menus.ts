@@ -7,7 +7,17 @@ import { money } from '../shop/price-book';
 import { VEHICLES } from '../vehicles/specs';
 import { Panel, UI } from './panel';
 
-export type Screen = 'profiles' | 'keyboard' | 'home' | 'lesson' | 'settings' | 'pause' | 'shop' | 'upgrades' | 'days';
+export type Screen =
+  | 'profiles'
+  | 'keyboard'
+  | 'home'
+  | 'lesson'
+  | 'settings'
+  | 'access'
+  | 'pause'
+  | 'shop'
+  | 'upgrades'
+  | 'days';
 
 export interface MenuActions {
   startLesson(lesson: LessonDef, mode: Mode, vehicle: VehicleId): void;
@@ -83,6 +93,9 @@ export class Menus {
         break;
       case 'settings':
         this.drawSettings(p);
+        break;
+      case 'access':
+        this.drawAccess(p);
         break;
       case 'pause':
         this.drawPause(p);
@@ -375,14 +388,6 @@ export class Menus {
         ],
       ],
       [
-        'Captions',
-        [
-          ['Small', () => set({ captionSize: 'small' }), s.captionSize === 'small'],
-          ['Medium', () => set({ captionSize: 'medium' }), s.captionSize === 'medium'],
-          ['Large', () => set({ captionSize: 'large' }), s.captionSize === 'large'],
-        ],
-      ],
-      [
         'Snap turn',
         [
           ['30°', () => set({ snapTurnDegrees: 30 }), s.snapTurnDegrees === 30],
@@ -390,22 +395,8 @@ export class Menus {
           ['90°', () => set({ snapTurnDegrees: 90 }), s.snapTurnDegrees === 90],
         ],
       ],
-      [
-        'Motion effects',
-        [
-          ['Full', () => set({ reducedMotion: false }), !s.reducedMotion],
-          ['Reduced', () => set({ reducedMotion: true }), s.reducedMotion],
-        ],
-      ],
     ];
-    rows.forEach(([label, options], r) => {
-      const y = 150 + r * 82;
-      p.text(label, 50, y + 18, { size: 28, color: UI.muted });
-      options.forEach(([text, fn, selected], i) => {
-        const w = options.length === 3 ? 240 : 370;
-        p.button(`set-${r}-${i}`, text, 330 + i * (w + 16), y, w, 66, fn, { selected, size: 26 });
-      });
-    });
+    this.optionRows(p, rows);
     const vy = 150 + rows.length * 82;
     p.text('Voice / effects', 50, vy + 18, { size: 28, color: UI.muted });
     const vol = (key: 'narrationVolume' | 'effectsVolume', d: number) =>
@@ -419,7 +410,80 @@ export class Menus {
 
     const by = p.heightPx - 96;
     p.button('calibrate', 'Calibrate my height', 50, by, 420, 72, () => this.actions.calibrateHeight());
+    p.button('accessibility', 'Accessibility', 490, by, 330, 72, () => this.go('access'));
     p.button('settings-done', 'Done', p.widthPx - 330, by, 280, 72, () => this.go(this.returnTo), {
+      variant: 'primary',
+    });
+  }
+
+  /** Rows of mutually exclusive option buttons, with a label on the left. */
+  private optionRows(p: Panel, rows: [string, [string, () => void, boolean][]][]): void {
+    rows.forEach(([label, options], r) => {
+      const y = 150 + r * 82;
+      p.text(label, 50, y + 18, { size: 28, color: UI.muted });
+      const gap = 16;
+      const w = Math.min(370, (p.widthPx - 380 - gap * (options.length - 1)) / options.length);
+      options.forEach(([text, fn, selected], i) => {
+        p.button(`set-${r}-${i}`, text, 330 + i * (w + gap), y, w, 66, fn, { selected, size: 26 });
+      });
+    });
+  }
+
+  private drawAccess(p: Panel): void {
+    const s = this.save.data.settings;
+    this.header(p, 'Accessibility', 'Text, colors, motion and controls. Saved on this device.');
+    const set = (patch: Partial<Settings>) => {
+      this.actions.settingsChanged(patch);
+      p.redraw();
+    };
+    this.optionRows(p, [
+      [
+        'Text size',
+        [
+          ['Small', () => set({ captionSize: 'small' }), s.captionSize === 'small'],
+          ['Medium', () => set({ captionSize: 'medium' }), s.captionSize === 'medium'],
+          ['Large', () => set({ captionSize: 'large' }), s.captionSize === 'large'],
+          ['Extra large', () => set({ captionSize: 'xlarge' }), s.captionSize === 'xlarge'],
+        ],
+      ],
+      [
+        'Colors',
+        [
+          ['Standard', () => set({ palette: 'standard' }), s.palette === 'standard'],
+          ['Color-blind safe', () => set({ palette: 'colorblind' }), s.palette === 'colorblind'],
+          ['High contrast', () => set({ palette: 'contrast' }), s.palette === 'contrast'],
+        ],
+      ],
+      [
+        'Controllers',
+        [
+          ['Two hands', () => set({ oneHanded: false }), !s.oneHanded],
+          ['One hand', () => set({ oneHanded: true }), s.oneHanded],
+        ],
+      ],
+      [
+        'Main hand',
+        [
+          ['Right', () => set({ handedness: 'right' }), s.handedness === 'right'],
+          ['Left', () => set({ handedness: 'left' }), s.handedness === 'left'],
+        ],
+      ],
+      [
+        'Motion effects',
+        [
+          ['Full', () => set({ reducedMotion: false }), !s.reducedMotion],
+          ['Reduced', () => set({ reducedMotion: true }), s.reducedMotion],
+        ],
+      ],
+    ]);
+    p.paragraph(
+      'One hand: the main-hand stick teleports (push forward) and turns (push left or right). Tags and highlights use shapes as well as colors.',
+      50,
+      570,
+      p.widthPx - 100,
+      { size: 24, color: UI.muted, maxLines: 3 },
+    );
+    p.button('access-done', 'Done', p.widthPx - 330, p.heightPx - 96, 280, 72, () => this.go('settings'), {
       variant: 'primary',
     });
   }

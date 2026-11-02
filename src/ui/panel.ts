@@ -8,11 +8,12 @@ import {
   PlaneGeometry,
   SRGBColorSpace,
 } from 'three';
+import type { Palette } from '../core/settings';
 
 export const FONT = '"Atkinson Hyperlegible", "Segoe UI", Roboto, Arial, sans-serif';
 
 /** UI colors (canvas CSS strings). Blue/orange pair stays readable for color-blind players. */
-export const UI = {
+export const UI: Record<keyof typeof STANDARD, string> = {
   bg: '#121c24',
   bgSolid: '#121c24',
   card: '#1f2f3b',
@@ -27,6 +28,48 @@ export const UI = {
   bad: '#ff5c5c',
   disabled: '#4b5a66',
 };
+
+const STANDARD = {
+  bg: '#121c24',
+  bgSolid: '#121c24',
+  card: '#1f2f3b',
+  cardHover: '#2b4152',
+  border: '#3a5366',
+  text: '#f1f5f8',
+  muted: '#a9bac7',
+  accent: '#2f9bff',
+  accentText: '#ffffff',
+  good: '#3fbf6f',
+  warn: '#ffa630',
+  bad: '#ff5c5c',
+  disabled: '#4b5a66',
+};
+
+const PALETTES: Record<Palette, Partial<typeof STANDARD>> = {
+  standard: {},
+  // Okabe-Ito colors: good, caution and bad stay distinct with any type of color blindness.
+  colorblind: { good: '#56b4e9', warn: '#f0e442', bad: '#d55e00' },
+  contrast: {
+    bg: '#000000',
+    bgSolid: '#000000',
+    card: '#141414',
+    cardHover: '#383838',
+    border: '#ffffff',
+    text: '#ffffff',
+    muted: '#ececec',
+    accent: '#4fb3ff',
+    good: '#00e676',
+    warn: '#ffd000',
+    bad: '#ff4d4d',
+    disabled: '#9a9a9a',
+  },
+};
+
+/** Switches every panel to a color palette and redraws them. */
+export function applyPalette(palette: Palette): void {
+  Object.assign(UI, STANDARD, PALETTES[palette]);
+  for (const p of Panel.all) p.redraw();
+}
 
 export interface Button {
   id: string;
@@ -52,6 +95,8 @@ export interface ButtonStyle {
  * drawing, so hit-testing always matches what is on screen.
  */
 export class Panel {
+  /** Every panel made so far (to redraw them all when the palette changes). */
+  static readonly all = new Set<Panel>();
   readonly mesh: Mesh;
   readonly canvas: HTMLCanvasElement;
   readonly ctx: CanvasRenderingContext2D;
@@ -94,6 +139,7 @@ export class Panel {
     this.mesh.userData.pick = { kind: 'ui', id: name };
     this.mesh.userData.enabled = true;
     this.mesh.userData.panel = this;
+    Panel.all.add(this);
   }
 
   setDraw(fn: (p: Panel) => void): this {

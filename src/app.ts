@@ -20,7 +20,7 @@ import { ShopController } from './shop/shop-controller';
 import { type DialogButton, Hud } from './ui/hud';
 import { Markers } from './ui/markers';
 import { Menus, type Screen } from './ui/menus';
-import { UI } from './ui/panel';
+import { applyPalette, UI } from './ui/panel';
 import { formatDuration } from './ui/records';
 import { World } from './world/world';
 
@@ -47,6 +47,7 @@ export class App {
   readonly interaction: Interaction;
   readonly session: LessonSession;
   readonly shop: ShopController;
+  private paletteApplied = false;
   readonly xrInput: XRInput;
   readonly desktop: DesktopInput;
   screen: AppScreen = 'title';
@@ -179,7 +180,17 @@ export class App {
     const s = this.save.updateSettings(patch);
     this.sfx.setVolume(s.effectsVolume);
     this.narrator.volume = s.narrationVolume;
-    this.hud.captionSize = s.captionSize;
+    if (this.hud.captionSize !== s.captionSize) {
+      this.hud.captionSize = s.captionSize;
+      this.hud.layout(this.camera, this.renderer.xr.isPresenting);
+    }
+    if (patch.palette !== undefined || !this.paletteApplied) {
+      applyPalette(s.palette);
+      this.paletteApplied = true;
+      this.menus.panel.redraw();
+    }
+    this.locomotion.oneHanded = s.oneHanded;
+    this.locomotion.preferredHand = s.handedness;
     this.locomotion.snapDegrees = s.snapTurnDegrees;
     this.locomotion.seated = s.seated;
     this.locomotion.heightOffset = s.heightOffset;

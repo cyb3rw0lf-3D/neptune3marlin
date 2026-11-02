@@ -170,10 +170,23 @@ export class Locomotion {
 
   // --- VR thumbsticks ---
 
-  /** Left stick forward aims a teleport arc; right stick left/right snap turns. */
+  /** One-handed play: the preferred controller's stick both teleports and turns. */
+  oneHanded = false;
+  preferredHand: 'left' | 'right' = 'right';
+
+  /**
+   * Left stick forward aims a teleport arc; right stick left/right snap turns.
+   * With one hand (the setting, or only one controller connected) one stick does both.
+   */
   updateSticks(pointers: Pointer[]): void {
-    const left = pointers.find((p) => p.connected && p.kind === 'controller' && p.handedness === 'left');
-    const right = pointers.find((p) => p.connected && p.kind === 'controller' && p.handedness === 'right');
+    const pads = pointers.filter((p) => p.connected && p.kind === 'controller');
+    let left = pads.find((p) => p.handedness === 'left');
+    let right = pads.find((p) => p.handedness === 'right');
+    if (this.oneHanded || pads.length === 1) {
+      const solo = pads.find((p) => p.handedness === this.preferredHand) ?? pads[0];
+      left = solo;
+      right = solo;
+    }
     if (right) {
       const x = right.stick.x;
       if (Math.abs(x) > 0.7 && !this.turnLatch) {

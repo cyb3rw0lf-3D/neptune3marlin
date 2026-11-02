@@ -1,6 +1,7 @@
 import type { UnitSystem } from './units';
 
-export type CaptionSize = 'small' | 'medium' | 'large';
+export type CaptionSize = 'small' | 'medium' | 'large' | 'xlarge';
+export type Palette = 'standard' | 'colorblind' | 'contrast';
 export type Handedness = 'right' | 'left';
 
 export interface Settings {
@@ -18,6 +19,10 @@ export interface Settings {
   simpleGestures: boolean;
   narrationVolume: number;
   effectsVolume: number;
+  /** Panel colors: standard, a color-blind-safe set, or high contrast. */
+  palette: Palette;
+  /** One controller does everything: teleport, snap turn and tools. */
+  oneHanded: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -31,6 +36,8 @@ export const DEFAULT_SETTINGS: Settings = {
   simpleGestures: false,
   narrationVolume: 0.9,
   effectsVolume: 0.7,
+  palette: 'standard',
+  oneHanded: false,
 };
 
 export function sanitizeSettings(raw: unknown): Settings {
@@ -41,8 +48,15 @@ export function sanitizeSettings(raw: unknown): Settings {
   if (typeof r.seated === 'boolean') s.seated = r.seated;
   if (typeof r.heightOffset === 'number' && Math.abs(r.heightOffset) <= 1.5) s.heightOffset = r.heightOffset;
   if (r.handedness === 'left' || r.handedness === 'right') s.handedness = r.handedness;
-  if (r.captionSize === 'small' || r.captionSize === 'medium' || r.captionSize === 'large')
+  if (
+    r.captionSize === 'small' ||
+    r.captionSize === 'medium' ||
+    r.captionSize === 'large' ||
+    r.captionSize === 'xlarge'
+  )
     s.captionSize = r.captionSize;
+  if (r.palette === 'standard' || r.palette === 'colorblind' || r.palette === 'contrast') s.palette = r.palette;
+  if (typeof r.oneHanded === 'boolean') s.oneHanded = r.oneHanded;
   if (r.snapTurnDegrees === 30 || r.snapTurnDegrees === 45 || r.snapTurnDegrees === 90)
     s.snapTurnDegrees = r.snapTurnDegrees;
   if (typeof r.reducedMotion === 'boolean') s.reducedMotion = r.reducedMotion;
