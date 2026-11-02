@@ -65,6 +65,7 @@ export class App {
     this.world = new World(this.registry);
     const scene = this.world.scene;
     this.narrator = new Narrator(import.meta.env.BASE_URL);
+    this.narrator.context = () => this.sfx.context;
     this.locomotion = new Locomotion(this.camera, this.tweens, this.sfx);
     scene.add(this.locomotion.rig, this.locomotion.arcLine);
     this.locomotion.isFloorAllowed = (p) => this.world.isWalkable(p);

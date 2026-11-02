@@ -1,6 +1,6 @@
 import { type Object3D, Vector3 } from 'three';
 import type { SoundFx } from '../audio/sfx';
-import { createRng, randomSeed } from '../core/random';
+import { createRng, matchingSeed, randomSeed } from '../core/random';
 import type { RunRecord, SaveStore } from '../core/save';
 import type { Settings } from '../core/settings';
 import { ease, type Tweens } from '../core/tween';
@@ -15,7 +15,7 @@ import type { Registry } from '../interaction/registry';
 import type { Hud } from '../ui/hud';
 import type { Markers } from '../ui/markers';
 import { UI } from '../ui/panel';
-import { VEHICLES, type WheelPos } from '../vehicles/specs';
+import { VEHICLES, type VehicleSpec, type WheelPos } from '../vehicles/specs';
 import { RAISE_HEIGHT } from '../world/lift';
 import type { ScanButton } from '../world/scan-tool';
 import type { World } from '../world/world';
@@ -61,6 +61,29 @@ export interface FinishInfo {
   result: RunResult;
   record: RunRecord | null;
   vehicleName: string;
+  variant: unknown;
+  /** Shop mode: the job ended early on a safety-critical error. */
+  safetyStop: boolean;
+}
+
+/** Changes a caller can make to a run (Shop mode jobs). Training runs pass none. */
+export interface RunOptions {
+  /** Re-draws the lesson variant until one matches (e.g. the customer's OBD code). */
+  match?: (variant: unknown) => boolean;
+  adjustSteps?: (steps: StepDef[], vehicle: VehicleSpec, variant: unknown, units: UnitSystem) => StepDef[];
+  cartExtra?: ItemId[];
+  workOrderExtra?: string[];
+  /** End the run as soon as a safety-critical mistake has been explained. */
+  stopOnCritical?: boolean;
+  /** Save the run to the student's lesson records (default true). */
+  record?: boolean;
+  /** Replaces the start dialog's title and text. */
+  title?: string;
+  intro?: string;
+  /** Digital torque wrench upgrade: the dial says when the setting is in spec. */
+  digitalTorque?: boolean;
+  /** Shown on the clipboard under the title. */
+  banner?: string;
 }
 
 const MODE_NAME: Record<Mode, string> = { learn: 'Learn', practice: 'Practice', test: 'Test' };
@@ -115,16 +138,23 @@ export class LessonSession implements InteractionHooks {
     return this.runner !== null;
   }
 
-  start(lesson: LessonDef, mode: Mode, vehicleId: VehicleId, seed = randomSeed()): void {
+  start(lesson: LessonDef, mode: Mode, vehicleId: VehicleId, seed = randomSeed(), opts: RunOptions = {}): void {
     const d = this.d;
     this.lesson = lesson;
     this.mode = mode;
     this.vehicleId = vehicleId;
-    this.seed = seed;
+    this.opts = opts;
     this.units = d.settings().units;
     const vehicle = VEHICLES[vehicleId];
+    if (opts.match) {
+      const match = opts.match;
+      seed = matchingSeed(seed, (s) => match(lesson.variant(createRng(s), vehicle)));
+    }
+    this.seed = seed;
     const variant = lesson.variant(createRng(seed), vehicle);
-    const steps = lesson.steps(vehicle, variant, this.units);
+    this.variant = variant;
+    let steps = lesson.steps(vehicle, variant, this.units);
+    if (opts.adjustSteps) steps = opts.adjustSteps(steps, vehicle, variant, this.units);
     this.runner = new LessonRunner(steps, mode, { itemName });
     this.torqueSetting = 10;
     this.status = '';
@@ -135,11 +165,11 @@ export class LessonSession implements InteractionHooks {
     d.markers.hideReading();
     d.world.setVehicle(vehicleId);
     d.world.reset();
-    d.world.layoutCart(lesson.cartItems);
+    d.world.layoutCart([...lesson.cartItems, ...(opts.cartExtra ?? [])]);
     this.stage = lesson.stage?.(variant, vehicle) ?? {};
     d.world.applyStage(this.stage);
     this.applyFaults(this.stage.faults ?? []);
-    this.workOrder = lesson.workOrder(vehicle, variant, this.units);
+    this.workOrder = [...(opts.workOrderExtra ?? []), ...lesson.workOrder(vehicle, variant, this.units)];
 
     d.hud.closeDialog();
     this.refreshClipboard();
@@ -147,11 +177,12 @@ export class LessonSession implements InteractionHooks {
     d.valkyrie.snapHome(d.camera);
     d.teleport('start');
 
-    const intro = mode === 'learn' ? lesson.intro : mode === 'practice' ? LINES.practiceIntro : LINES.testIntro;
+    const intro =
+      opts.intro ?? (mode === 'learn' ? lesson.intro : mode === 'practice' ? LINES.practiceIntro : LINES.testIntro);
     this.busy = true;
     d.hud.openDialog({
       tone: mode === 'test' ? 'warn' : 'info',
-      title: `${lesson.title}: ${MODE_NAME[mode]}`,
+      title: opts.title ?? `${lesson.title}: ${MODE_NAME[mode]}`,
       body: `${intro}\n\nVehicle: ${vehicle.name}, ${vehicle.kind}.`,
       buttons: [
         { id: 'begin', label: 'Start', variant: 'primary', onClick: () => this.begin() },
@@ -163,6 +194,8 @@ export class LessonSession implements InteractionHooks {
 
   private workOrder: string[] = [];
   private stage: LessonStage = {};
+  private opts: RunOptions = {};
+  private variant: unknown = null;
 
   /** Visible faults for the inspection lesson (others show up in readings). */
   private applyFaults(faults: string[]): void {
@@ -199,7 +232,7 @@ export class LessonSession implements InteractionHooks {
   }
 
   restart(): void {
-    if (this.lesson) this.start(this.lesson, this.mode, this.vehicleId);
+    if (this.lesson) this.start(this.lesson, this.mode, this.vehicleId, randomSeed(), this.opts);
   }
 
   // --- narration ---
@@ -376,7 +409,7 @@ export class LessonSession implements InteractionHooks {
     const vehicle = VEHICLES[this.vehicleId];
     const res = r.result();
     this.d.hud.showClipboard({
-      title: lesson.title,
+      title: this.opts.banner ?? lesson.title,
       mode: this.mode,
       vehicle: `${vehicle.name} · ${vehicle.engine}`,
       workOrder: this.workOrder,
@@ -447,7 +480,13 @@ export class LessonSession implements InteractionHooks {
   }
 
   private dialLabel(): string {
-    return format('torque', this.torqueSetting, this.units);
+    const label = format('torque', this.torqueSetting, this.units);
+    const m = this.runner?.current?.measure;
+    if (this.opts.digitalTorque && m?.source === 'setting' && m.quantity === 'torque') {
+      const ok = this.torqueSetting >= m.min && this.torqueSetting <= m.max;
+      return `${label} ${ok ? '✓ IN SPEC' : '· not spec'}`;
+    }
+    return label;
   }
 
   onAdjust(_pointer: Pointer | null, delta: number): void {
@@ -539,7 +578,8 @@ export class LessonSession implements InteractionHooks {
     if (v.kind === 'mistake') {
       const at = this.anchorPosition(v.step.targets[0]);
       void this.handleMistake(v.mistake, v.record, at).then(() => {
-        if (this.runner && !this.runner.finished) this.onStepStart();
+        if (this.opts.stopOnCritical && v.record.critical) this.finish(true);
+        else if (this.runner && !this.runner.finished) this.onStepStart();
       });
       return;
     }
@@ -644,7 +684,7 @@ export class LessonSession implements InteractionHooks {
     this.refreshClipboard();
   }
 
-  private finish(): void {
+  private finish(safetyStop = false): void {
     const r = this.runner;
     const lesson = this.lesson;
     if (!r || !lesson) return;
@@ -654,16 +694,28 @@ export class LessonSession implements InteractionHooks {
     this.d.hud.showDial(null, '');
     const result = r.result();
     const vehicle = VEHICLES[this.vehicleId];
-    const record = this.d.save.recordRun({
-      ...result,
-      lessonId: lesson.id,
-      lessonTitle: lesson.title,
+    const record =
+      this.opts.record === false
+        ? null
+        : this.d.save.recordRun({
+            ...result,
+            lessonId: lesson.id,
+            lessonTitle: lesson.title,
+            mode: this.mode,
+            vehicleName: vehicle.name,
+          });
+    const good = !safetyStop && (result.passed || this.mode === 'learn');
+    this.d.sfx.play(good ? 'success' : 'error');
+    this.d.valkyrie.setMood(good ? 'happy' : 'concerned');
+    this.onFinish({
+      lesson,
       mode: this.mode,
+      result,
+      record,
       vehicleName: vehicle.name,
+      variant: this.variant,
+      safetyStop,
     });
-    this.d.sfx.play(result.passed || this.mode === 'learn' ? 'success' : 'error');
-    this.d.valkyrie.setMood(result.passed || this.mode === 'learn' ? 'happy' : 'concerned');
-    this.onFinish({ lesson, mode: this.mode, result, record, vehicleName: vehicle.name });
   }
 
   // --- world effects ---

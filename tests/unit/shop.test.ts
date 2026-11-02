@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createRng } from '../../src/core/random';
+import { createRng, matchingSeed } from '../../src/core/random';
 import { emptySave, SaveStore } from '../../src/core/save';
 import { lessonById } from '../../src/lessons/content';
 import { LessonRunner } from '../../src/lessons/engine/runner';
 import type { MistakeRecord, RunResult, StepDef } from '../../src/lessons/engine/types';
 import { applyOutcome, efficientSeconds, type JobInput, settleJob } from '../../src/shop/economy';
-import { applyUpgrades, matchingSeed, planJob } from '../../src/shop/job-plan';
+import { applyUpgrades, planJob } from '../../src/shop/job-plan';
 import { COMEBACK_NOTES, JOBS, jobById, tierNeeded } from '../../src/shop/jobs';
 import { CUSTOMERS, newShop, REP, START_MONEY, sanitizeShop, TIER_AT, tierFor } from '../../src/shop/model';
 import { HINT_COST, LABOR_RATE, quote, SERVICES, serviceLines } from '../../src/shop/price-book';

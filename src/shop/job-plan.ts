@@ -61,12 +61,3 @@ export function planJob(sj: ShiftJob, upgrades: UpgradeId[]): JobPlan {
     ],
   };
 }
-
-/** Draws variants from a seed until one matches the job (e.g. the right OBD code). */
-export function matchingSeed(seed: number, accept: (s: number) => boolean, tries = 400): number {
-  for (let i = 0; i < tries; i++) {
-    const s = (seed + i * 7919) >>> 0;
-    if (accept(s)) return s;
-  }
-  return seed;
-}
