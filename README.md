@@ -32,13 +32,20 @@ Every run produces a report card (score, safety errors, hints, time, each mistak
 | Brake Inspection & Pads (wheel chocks, floor jack and jack stands, pad and rotor measurements, caliper on an S-hook, pedal pump) | Available |
 | Battery & Jump-Start (voltage and load tests, then clean, replace, or jump-start with cables or a jump pack) | Available |
 | Multi-Point Inspection (12 checks with 2 to 4 random faults; tag each part green, yellow or red) | Available |
-| OBD-II Diagnostics | Stage 3 |
-| Spark Plugs & Ignition | Stage 3 |
-| EV High-Voltage Safety (awareness + de-energize procedure) | Stage 3 |
+| OBD-II Diagnostics (scan tool with its own screen; random fault: loose gas cap, misfire with a coil swap test, vacuum leak from fuel trims, or a stuck-open thermostat) | Available |
+| Spark Plugs & Ignition (cold check, blow out the well, read the old plug, gap, start by hand, torque) | Available |
+| EV High-Voltage Safety (spot the orange parts, barrier, glove air test, lockbox, 12 V off, service disconnect, wait, live-dead-live) | Available |
 
-Every available lesson runs on two vehicles: the **Aster S4** sedan and the **Talus 1500** crew-cab pickup (6-lug wheels, a frame you lift on with truck adapters, its own specs). Pick the vehicle on the lesson card for Learn and Practice. A Test picks one at random, so students learn the procedure, not one car.
+Three vehicles:
+- the **Aster S4** sedan;
+- the **Talus 1500** crew-cab pickup (6-lug wheels, a frame you lift on with truck adapters, its own specs);
+- the **Wren EV** hatchback (a flat high-voltage battery pack, orange cables, a frunk and a 12-volt battery).
 
-Later stages add the Wren EV, then a **Shop mode** career (customers, diagnosis, quotes, money, reputation and upgrades), then an online **teacher dashboard**.
+Each lesson runs on every vehicle it suits. Gas-engine lessons skip the EV, the EV safety lesson is EV-only, and the EV gets its own versions of tires, brakes, battery (12 V only) and inspection. Pick the vehicle on the lesson card for Learn and Practice. A Test picks one at random, so students learn the procedure, not one car.
+
+Whenever an engine runs indoors in the diagnostics and spark plug lessons, the shop's exhaust extraction hose goes on the tailpipe first; skipping it is a safety error.
+
+Later stages add a **Shop mode** career (customers, diagnosis, quotes, money, reputation and upgrades), then an online **teacher dashboard**.
 
 > Specs in the game are typical example values for fictional vehicles. Real service work always follows the manufacturer's service information.
 
@@ -80,8 +87,9 @@ src/
   core/         settings, saves (per-device student profiles), units, tweens
   lessons/      engine (pure lesson state machine + scoring), content (one file per lesson),
                 session (runs a lesson in the world), consequences (mistake replays)
-  world/        garage, two-post lift, tool cart, floor jack and stands, jump pack, low-poly helpers
-  vehicles/     shared vehicle model, sedan and pickup bodies, part layouts, example specs
+  world/        garage, two-post lift, tool cart, floor jack and stands, jump pack, scan tool,
+                exhaust reel, EV safety kit, low-poly helpers
+  vehicles/     shared vehicle model, sedan, pickup and EV bodies, part layouts, example specs
   interaction/  tool grabbing, gestures, targets and the interaction registry
   input/        WebXR controllers / hands / transient pointers, mouse / keyboard / touch
   locomotion/   teleport, snap turn, seated height, desktop movement

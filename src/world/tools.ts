@@ -208,6 +208,105 @@ export function buildItemModel(id: string): ItemModel {
         col = boxCollider(w + 0.04, 0.22, 0.2);
         break;
       }
+      case 'exhaust-hose':
+        b.cyl(0.06, 0.05, 0.16, 10, C.black, { p: [0, 0, 0.02], r: [Math.PI / 2, 0, 0] }).torus(
+          0.06,
+          0.01,
+          C.safetyYellow,
+          {
+            p: [0, 0, -0.06],
+          },
+        );
+        col = boxCollider(0.16, 0.16, 0.22);
+        break;
+      case 'ir-thermometer':
+        b.box(0.04, 0.12, 0.05, C.safetyRed, { p: [0, -0.04, 0.03] })
+          .box(0.05, 0.05, 0.12, C.safetyRed, { p: [0, 0.02, 0] })
+          .cyl(0.012, 0.012, 0.01, 8, C.black, { p: [0, 0.02, -0.065], r: [Math.PI / 2, 0, 0] });
+        col = boxCollider(0.08, 0.16, 0.16);
+        break;
+      case 'air-blower':
+        b.box(0.03, 0.1, 0.04, C.black, { p: [0, -0.04, 0.04] })
+          .box(0.04, 0.04, 0.08, 0x2f6fd6, { p: [0, 0.02, 0.02] })
+          .cyl(0.005, 0.005, 0.14, 6, C.chrome, { p: [0, 0.02, -0.08], r: [Math.PI / 2, 0, 0] });
+        col = boxCollider(0.08, 0.14, 0.26);
+        break;
+      case 'plug-socket':
+        b.box(0.026, 0.018, 0.18, C.chrome, { p: [0, 0, 0.12] })
+          .cyl(0.024, 0.024, 0.026, 10, C.chrome, { p: [0, 0, 0.02] })
+          .cyl(0.007, 0.007, 0.15, 6, C.steel, { p: [0, 0, -0.06], r: [Math.PI / 2, 0, 0] })
+          .cyl(0.013, 0.013, 0.06, 8, C.chrome, { p: [0, 0, -0.16], r: [Math.PI / 2, 0, 0] });
+        col = boxCollider(0.07, 0.07, 0.42);
+        break;
+      case 'feeler-gauge':
+        b.torus(0.03, 0.006, C.chrome, { p: [0, 0, 0.03], r: [Math.PI / 2, 0, 0] }, 4, 12).box(
+          0.008,
+          0.004,
+          0.06,
+          C.steel,
+          {
+            p: [0, 0, -0.02],
+          },
+        );
+        col = boxCollider(0.09, 0.06, 0.14);
+        break;
+      case 'dielectric-grease':
+        b.cyl(0.014, 0.014, 0.08, 8, C.white, { p: [0, 0, 0.02], r: [Math.PI / 2, 0, 0] }).cyl(
+          0.006,
+          0.003,
+          0.025,
+          6,
+          0x2f6fd6,
+          {
+            p: [0, 0, -0.03],
+            r: [Math.PI / 2, 0, 0],
+          },
+        );
+        col = boxCollider(0.07, 0.07, 0.14);
+        break;
+      case 'new-plug':
+      case 'old-plug': {
+        const tip = id === 'old-plug' ? 0x3a2e24 : C.steel;
+        b.cyl(0.009, 0.009, 0.03, 6, C.white, { p: [0, 0.03, 0] })
+          .cyl(0.011, 0.011, 0.015, 6, C.steel, { p: [0, 0.008, 0] })
+          .cyl(0.007, 0.007, 0.02, 6, tip, { p: [0, -0.01, 0] });
+        col = sphereCollider(0.05);
+        break;
+      }
+      case 'new-coil':
+        b.box(0.045, 0.035, 0.045, C.black)
+          .box(0.03, 0.02, 0.025, 0x3a3f44, { p: [0.03, 0.005, 0] })
+          .cyl(0.012, 0.012, 0.06, 6, C.black, { p: [0, -0.045, 0] });
+        col = sphereCollider(0.06);
+        break;
+      case 'new-gas-cap':
+        b.cyl(0.04, 0.04, 0.03, 10, C.black).box(0.06, 0.015, 0.012, C.black, { p: [0, 0.02, 0] });
+        col = sphereCollider(0.06);
+        break;
+      case 'new-vacuum-hose':
+        b.cyl(0.011, 0.011, 0.2, 6, C.black, { r: [Math.PI / 2, 0, 0] });
+        col = boxCollider(0.05, 0.05, 0.22);
+        break;
+      case 'new-thermostat':
+        b.cyl(0.03, 0.03, 0.012, 10, C.copper).cyl(0.008, 0.008, 0.04, 6, C.steel, { p: [0, 0.02, 0] });
+        col = sphereCollider(0.06);
+        break;
+      case 'cat3-meter':
+        b.box(0.08, 0.03, 0.15, C.safetyRed, { p: [0, 0, 0.03] })
+          .box(0.06, 0.004, 0.05, 0x9fd3b0, { p: [0, 0.017, 0.01] })
+          .box(0.02, 0.006, 0.03, C.white, { p: [0, 0.017, 0.08] })
+          .cyl(0.003, 0.003, 0.12, 4, C.safetyRed, { p: [0.025, 0, -0.08], r: [Math.PI / 2, 0, 0] })
+          .cyl(0.003, 0.003, 0.12, 4, C.black, { p: [-0.025, 0, -0.08], r: [Math.PI / 2, 0, 0] });
+        col = boxCollider(0.11, 0.07, 0.3);
+        break;
+      case 'loto-tag':
+        b.box(0.07, 0.1, 0.004, C.safetyRed).box(0.03, 0.03, 0.03, C.safetyRed, { p: [0, -0.06, 0] });
+        col = boxCollider(0.1, 0.16, 0.06);
+        break;
+      case 'key-fob':
+        b.box(0.035, 0.012, 0.06, C.black).box(0.02, 0.004, 0.02, C.white, { p: [0, 0.007, 0] });
+        col = sphereCollider(0.05);
+        break;
       default:
         b.box(0.05, 0.05, 0.05, C.white);
         col = boxCollider(0.08, 0.08, 0.08);

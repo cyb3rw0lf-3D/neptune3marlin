@@ -24,7 +24,19 @@ import { Vehicle } from '../vehicles/vehicle';
 import { Lift } from './lift';
 import { build } from './lowpoly';
 import { C } from './palette';
-import { buildChock, buildClamp, buildJumpPack, Cable, FloorJack, JackStand } from './props';
+import {
+  buildBarrier,
+  buildChock,
+  buildClamp,
+  buildEvKitTable,
+  buildExhaustReel,
+  buildGloves,
+  buildJumpPack,
+  Cable,
+  FloorJack,
+  JackStand,
+} from './props';
+import { ScanTool } from './scan-tool';
 import { buildItemModel } from './tools';
 
 export interface WorkSpot {
@@ -52,6 +64,14 @@ export interface StageSetup {
   jack?: boolean;
   hoodOpen?: boolean;
   drainPan?: boolean;
+  /** Exhaust extraction reel behind the car (engine running indoors). */
+  exhaust?: boolean;
+  /** Scan tool hung on the lift post, with the screens for this run. */
+  scan?: Record<string, string[]>;
+  /** One replacement part laid on the cart's parts tray. */
+  trayItem?: string;
+  /** High-voltage safety kit, barriers and the fob lockbox for EV work. */
+  evKit?: boolean;
 }
 
 /** Tools that live on the cart. A lesson shows up to nine of them. */
@@ -77,7 +97,17 @@ export const ALL_ITEMS = [
   'battery-tester',
   'terminal-brush',
   'jumper-cables',
+  'ir-thermometer',
+  'air-blower',
+  'plug-socket',
+  'feeler-gauge',
+  'dielectric-grease',
+  'cat3-meter',
+  'loto-tag',
 ];
+
+/** Replacement parts that can sit on the cart's parts tray. */
+const TRAY_ITEMS = ['new-pads', 'new-plug', 'new-coil', 'new-gas-cap', 'new-vacuum-hose', 'new-thermostat'];
 
 const CART_POS = new Vector3(3.0, 0, 2.35);
 const CART_YAW = -0.45;
@@ -86,7 +116,10 @@ const PAN_HOME = new Vector3(0.45, 0, 2.5);
 const DONOR_NOSE_X = 0.45;
 const BENCH = new Vector3(-4.4, 0.93, -5.5);
 /** Spots for work near the floor, where a flat-screen player crouches. */
-const LOW_SPOTS = ['left-front', 'right-front', 'left-rear', 'right-rear', 'jack'];
+const LOW_SPOTS = ['left-front', 'right-front', 'left-rear', 'right-rear', 'jack', 'exhaust'];
+/** Where the scan tool hangs on the lift post. */
+const SCAN_HOOK = new Vector3(0.15, 1.3, 1.24);
+const LOCKBOX = new Vector3(-3.45, 0.98, -5.45);
 
 function yawFacing(from: Vector3, to: Vector3): number {
   return Math.atan2(-(to.x - from.x), -(to.z - from.z));
@@ -123,6 +156,13 @@ export class World {
   readonly coreShelf: Object3D;
   readonly cables = { red: new Cable('red'), black: new Cable('black') };
   readonly clamps = new Map<string, Mesh>();
+  readonly scanTool = new ScanTool();
+  readonly exhaustReel = buildExhaustReel();
+  readonly exhaustCable = new Cable('black', 0.045);
+  readonly evKit = buildEvKitTable();
+  readonly barriers = [buildBarrier(), buildBarrier()];
+  readonly gloves = { a: buildGloves(), b: buildGloves(0xd8462a), protectors: buildGloves(0x8a5a32) };
+  readonly lockbox: Mesh;
   /** Where the car body sits along x (0 on the lift). */
   carX = 0;
   /** How far the floor jack has raised the front (0..1). */
@@ -137,6 +177,8 @@ export class World {
     this.vehicles.set('sedan', new Vehicle(VEHICLES.sedan));
     // A white work truck, so it never looks like the teal sedan.
     this.vehicles.set('pickup', new Vehicle(VEHICLES.pickup, { paint: 0xe4e8ec, trim: 0x9aa4ad }));
+    // A pale yellow hatchback for the EV.
+    this.vehicles.set('ev', new Vehicle(VEHICLES.ev, { paint: 0xe9d77a, trim: 0xb39d3e }));
     this.vehicle = this.vehicles.get('sedan') as Vehicle;
     this.donor = new Vehicle(VEHICLES.sedan, { paint: 0xb5652a, trim: 0x8a4a1c });
     this.donor.root.name = 'donor-car';
@@ -201,6 +243,26 @@ export class World {
       this.scene.add(clamp);
       this.clamps.set(id, clamp);
     }
+
+    // Engine diagnostics: exhaust extraction and the scan tool.
+    this.scene.add(this.exhaustReel, this.exhaustCable.mesh);
+    // EV safety: kit table, barriers, gloves and the fob lockbox on the bench.
+    this.scene.add(this.evKit);
+    this.evKit.add(this.gloves.a, this.gloves.b, this.gloves.protectors);
+    this.gloves.a.position.set(-0.25, 0.84, -0.12);
+    this.gloves.b.position.set(-0.25, 0.84, 0.13);
+    this.gloves.protectors.position.set(0.0, 0.84, 0.15);
+    for (const b of this.barriers) this.scene.add(b);
+    const hvSign = sign('HIGH VOLTAGE', 0.5, 0.18, { bg: '#d8432f', sub: 'Keep out' });
+    hvSign.position.set(0, 0.95, 0);
+    hvSign.rotation.y = Math.PI / 2;
+    (this.barriers[0] as Group).add(hvSign);
+    this.lockbox = build()
+      .box(0.16, 0.12, 0.1, C.darkSteel)
+      .box(0.05, 0.03, 0.02, C.safetyYellow, { p: [0, 0, 0.055] })
+      .mesh('lockbox');
+    this.lockbox.position.copy(LOCKBOX);
+    this.scene.add(this.lockbox);
 
     this.buildItems();
     this.buildSpots();
@@ -470,9 +532,28 @@ export class World {
     this.registry.addItem('drain-plug', plug.object, plug.collider, plug.grip);
     this.registry.setItemAvailable('drain-plug', false);
 
-    const pads = buildItemModel('new-pads');
-    this.trayParts.add(pads.object);
-    this.registry.addItem('new-pads', pads.object, pads.collider, pads.grip);
+    for (const id of TRAY_ITEMS) {
+      const part = buildItemModel(id);
+      this.trayParts.add(part.object);
+      this.registry.addItem(id, part.object, part.collider, part.grip);
+    }
+    const oldPlug = buildItemModel('old-plug');
+    this.trayPlug.add(oldPlug.object);
+    this.registry.addItem('old-plug', oldPlug.object, oldPlug.collider, oldPlug.grip);
+
+    // The scan tool hangs on the lift post until a lesson plugs it in.
+    this.scene.add(this.scanTool.root);
+    this.registry.addItem('scan-tool', this.scanTool.root, boxCollider(0.26, 0.34, 0.08), {
+      position: new Vector3(0, 0.05, -0.15),
+    });
+    this.registry.addItem('exhaust-hose', buildItemModel('exhaust-hose').object, boxCollider(0.18, 0.18, 0.24), {
+      position: new Vector3(0, 0, -0.12),
+    });
+    const hose = this.registry.items.get('exhaust-hose');
+    if (hose) this.scene.add(hose.object);
+    const fob = buildItemModel('key-fob');
+    this.scene.add(fob.object);
+    this.registry.addItem('key-fob', fob.object, fob.collider, fob.grip);
 
     const jug = buildItemModel('oil-bottle');
     this.cart.add(jug.object);
@@ -508,7 +589,7 @@ export class World {
         this.registry.rehome(id, this.cart, p.clone());
       }
     }
-    for (const id of ['new-pads', 'battery-new', 'battery-wrong']) {
+    for (const id of ['battery-new', 'battery-wrong']) {
       this.registry.setItemAvailable(id, items.includes(id));
     }
   }
@@ -536,6 +617,8 @@ export class World {
     for (const pos of WHEELS) this.registry.removeItem(`wheel-${pos}`);
     for (const pos of ['FL', 'FR']) this.registry.removeItem(`caliper-${pos}`);
     this.registry.removeItem('old-battery');
+    this.registry.removeItem('coil-c1');
+    this.registry.removeItem('coil-c3');
   }
 
   private attachVehicle(v: Vehicle): void {
@@ -557,6 +640,15 @@ export class World {
     this.registry.addItem('old-battery', v.battery, boxCollider(0.3, 0.22, 0.22), {
       position: new Vector3(0, -0.1, -0.15),
     });
+    for (const [id, i] of [
+      ['coil-c1', 0],
+      ['coil-c3', 2],
+    ] as const) {
+      const coil = v.coils[i];
+      if (!coil) continue;
+      this.registry.addItem(id, coil, sphereCollider(0.06), { position: new Vector3(0, 0, -0.08) });
+      this.registry.items.get(id)!.collider.userData.enabled = false;
+    }
     this.layoutSpots();
   }
 
@@ -611,7 +703,104 @@ export class World {
       if (t) t.collider.userData.enabled = jack;
     }
     this.resetJack();
+
+    // Exhaust reel behind the car; the hose end hangs on it.
+    const exhaust = !!stage.exhaust;
+    this.exhaustReel.visible = exhaust;
+    this.exhaustReel.position.set(this.carX + L.rear - 0.9, 0, 1.8);
+    this.registry.setItemAvailable('exhaust-hose', exhaust);
+    this.registry.rehome('exhaust-hose', this.scene, this.exhaustReel.position.clone().add(new Vector3(0, 1.15, 0.12)));
+    this.drawExhaustHose();
+
+    // Scan tool on its hook, screens filled in for this run.
+    this.scanTool.reset();
+    if (stage.scan) this.scanTool.screens = { ...stage.scan };
+    this.registry.setItemAvailable('scan-tool', !!stage.scan);
+    this.registry.rehome('scan-tool', this.scene, SCAN_HOOK.clone());
+    this.scanTool.root.rotation.set(0, -0.5, 0);
+    for (const id of ['scan-read', 'scan-freeze', 'scan-live', 'scan-clear']) {
+      const t = this.registry.targets.get(id);
+      if (t) t.anchor.visible = !!stage.scan;
+    }
+
+    for (const id of TRAY_ITEMS) this.registry.setItemAvailable(id, id === stage.trayItem);
+    this.registry.setItemAvailable('old-plug', false);
+
+    // EV kit beside the front of the car, barriers ready to place.
+    const ev = !!stage.evKit;
+    this.evKit.visible = ev;
+    this.lockbox.visible = ev;
+    this.evKit.position.set(this.carX + L.front + 1.0, 0, -L.halfWidth - 0.75);
+    this.gloves.a.visible = true;
+    this.gloves.b.visible = true;
+    this.gloves.protectors.visible = true;
+    this.barriers.forEach((b, i) => {
+      b.visible = false;
+      b.position.set(this.carX + (i === 0 ? L.front + 0.6 : L.rear - 0.6), 0, 0);
+      const spot = this.registry.targets.get(i === 0 ? 'barrier-front' : 'barrier-rear');
+      if (spot) spot.anchor.position.set(b.position.x, 0.05, 0);
+    });
+    for (const id of [
+      'proving-unit',
+      'wait-timer',
+      'gloves-a',
+      'gloves-b',
+      'protectors',
+      'lockbox',
+      'barrier-front',
+      'barrier-rear',
+    ]) {
+      const t = this.registry.targets.get(id);
+      if (t) t.collider.userData.enabled = ev;
+    }
+    this.registry.setItemAvailable('key-fob', ev);
+    const start = new Vector3(...L.at.startButton);
+    this.registry.rehome('key-fob', this.vehicle.root, start.add(new Vector3(0.06, 0.01, -0.28)));
     this.layoutSpots();
+  }
+
+  /** Draws the exhaust hose from the reel to wherever its end is. */
+  drawExhaustHose(): void {
+    const hose = this.registry.items.get('exhaust-hose');
+    if (!hose?.available || !this.exhaustReel.visible) {
+      this.exhaustCable.connect(null, null);
+      return;
+    }
+    const top = this.exhaustReel.position.clone().add(new Vector3(0, 1.7, 0.12));
+    const end = hose.object.getWorldPosition(new Vector3()).add(new Vector3(0, 0.04, 0));
+    this.exhaustCable.connect(top, end);
+  }
+
+  /** Hooks the hose end over the tailpipe. */
+  placeExhaustHose(): void {
+    const tip = this.registry.targetWorldPosition('tailpipe');
+    if (!tip) return;
+    this.registry.rehome('exhaust-hose', this.scene, tip.clone().add(new Vector3(-0.12, 0, 0)));
+    const hose = this.registry.items.get('exhaust-hose');
+    if (hose) {
+      hose.object.rotation.set(0, Math.PI / 2, 0);
+      hose.collider.userData.enabled = false;
+    }
+    this.drawExhaustHose();
+  }
+
+  /** Plugs the scan tool into the OBD-II port and props it on the driver's door, screen out. */
+  plugScanTool(): void {
+    const ice = this.vehicle.layout.ice;
+    if (!ice) return;
+    // Propped on the door sill right in front of the driver's door spot, screen out.
+    const seat = this.vehicle.layout.at.driverSeat;
+    const at = new Vector3(seat[0] + 0.05, ice.dlc[1] + 0.12, ice.dlc[2] - 0.2);
+    this.registry.rehome('scan-tool', this.vehicle.root, at);
+    this.scanTool.root.rotation.set(-0.2, Math.PI, 0);
+    const item = this.registry.items.get('scan-tool');
+    if (item) item.collider.userData.enabled = false;
+    this.scanTool.connect(true);
+  }
+
+  showBarrier(i: number): void {
+    const b = this.barriers[i];
+    if (b) b.visible = true;
   }
 
   // --- floor jack and stands ---
@@ -764,6 +953,61 @@ export class World {
     power.position.set(0.08, 0.21, 0.05);
     this.jumpPack.add(power);
     reg.addTarget('pack-power', 'Jump pack power button', power, sphereCollider(0.04));
+
+    // Scan tool buttons: pressed on its screen, so their colliders stay off (the screen handles clicks).
+    for (const id of ['scan-read', 'scan-freeze', 'scan-live', 'scan-clear'] as const) {
+      const a = new Object3D();
+      const o = this.scanTool.buttonOffset(id);
+      a.position.set(o.x, o.y, 0.005);
+      this.scanTool.screen.mesh.add(a);
+      const label = {
+        'scan-read': 'Read codes',
+        'scan-freeze': 'Freeze frame',
+        'scan-live': 'Live data',
+        'scan-clear': 'Clear codes',
+      }[id];
+      reg.addTarget(id, `Scan tool: ${label}`, a, boxCollider(0.08, 0.03, 0.01));
+      reg.targets.get(id)!.collider.userData.enabled = false;
+    }
+
+    // EV safety kit.
+    const onKit = (id: string, label: string, p: [number, number, number], col: Mesh) => {
+      const a = new Object3D();
+      a.position.set(...p);
+      this.evKit.add(a);
+      reg.addTarget(id, label, a, col);
+    };
+    onKit('proving-unit', 'Proving unit (known voltage source)', [0.32, 0.9, -0.15], boxCollider(0.14, 0.1, 0.12));
+    onKit('wait-timer', 'Wait timer', [0.3, 0.92, 0.17], boxCollider(0.16, 0.14, 0.08));
+    onKit('gloves-a', 'Insulating gloves, pair A', [-0.25, 0.86, -0.12], boxCollider(0.22, 0.06, 0.22));
+    onKit('gloves-b', 'Insulating gloves, pair B', [-0.25, 0.86, 0.13], boxCollider(0.22, 0.06, 0.22));
+    onKit('protectors', 'Leather glove protectors', [0.0, 0.86, 0.15], boxCollider(0.22, 0.06, 0.22));
+    reg.addTarget('lockbox', 'Key lockbox', this.lockbox, boxCollider(0.22, 0.18, 0.16));
+    reg.addTarget(
+      'old-plug-view',
+      'Old spark plug (read the tip)',
+      this.registry.items.get('old-plug')!.object,
+      sphereCollider(0.06),
+    );
+    reg.addTarget(
+      'new-plug-gap',
+      'New spark plug gap',
+      this.registry.items.get('new-plug')!.object,
+      sphereCollider(0.06),
+    );
+    this.barriers.forEach((b, i) => {
+      const a = new Object3D();
+      a.position.set(0, 0.05, 0);
+      // Placed beside the car in applyStage, where the barrier will stand.
+      this.scene.add(a);
+      void b;
+      reg.addTarget(
+        i === 0 ? 'barrier-front' : 'barrier-rear',
+        i === 0 ? 'Barrier spot, front' : 'Barrier spot, rear',
+        a,
+        boxCollider(0.5, 0.1, 1.6),
+      );
+    });
   }
 
   /** Wheel chocks target the vehicle's rear tires, so they move with each vehicle swap. */
@@ -808,6 +1052,8 @@ export class World {
       ['jack', 'Floor jack', [nose + 1.5, 0, 0.6], [nose + 0.5, 0.5, 0]],
       ['driver', "Driver's door", [x + seat[0] - 0.1, 0, -L.halfWidth - 0.6], [x + seat[0], 1.1, 0]],
       ['donor', 'Donor car', [DONOR_NOSE_X + 0.25, 0, 1.25], [DONOR_NOSE_X + 0.6, 0.8, 0.3]],
+      ['exhaust', 'Tailpipe', [x + L.rear - 0.55, 0, 0.95], [x + (L.ice?.tailpipe[0] ?? L.rear), 0.3, 0.3]],
+      ['ev-kit', 'HV safety kit', [nose + 1.0, 0, -L.halfWidth + 0.15], [nose + 1.0, 0.85, -L.halfWidth - 0.75]],
     ];
   }
 
@@ -864,6 +1110,8 @@ export class World {
     this.setSpotEnabled('donor', !!this.stage.donor);
     this.setSpotEnabled('battery', this.carX !== 0);
     this.setSpotEnabled('hood', !this.stage.donor && !this.stage.jack);
+    this.setSpotEnabled('exhaust', !!this.stage.exhaust);
+    this.setSpotEnabled('ev-kit', !!this.stage.evKit);
   }
 
   private highlighted: WorkSpot | null = null;
@@ -1007,7 +1255,20 @@ export class World {
     this.registry.setItemAvailable('oil-bottle', false);
     this.registry.rehome('oil-bottle', this.cart, new Vector3(-0.64, CART_TOP + 0.13, 0.15));
     this.registry.rehome('drain-plug', this.trayPlug, new Vector3());
-    this.registry.rehome('new-pads', this.trayParts, new Vector3());
+    for (const id of TRAY_ITEMS) this.registry.rehome(id, this.trayParts, new Vector3());
+    this.registry.rehome('old-plug', this.trayPlug, new Vector3());
+    v.coils.forEach((coil, i) => {
+      const id = i === 0 ? 'coil-c1' : i === 2 ? 'coil-c3' : null;
+      const item = id ? this.registry.items.get(id) : undefined;
+      if (!item) return;
+      item.home = {
+        parent: v.root,
+        position: (v.coilHomes[i] as Vector3).clone(),
+        quaternion: coil.quaternion.clone().identity(),
+      };
+      item.collider.userData.enabled = false;
+      item.available = true;
+    });
     this.registry.rehome('pack-clamps', this.jumpPack, new Vector3(0, 0.23, 0));
     this.registry.rehome('battery-new', this.scene, new Vector3(BENCH.x - 0.35, BENCH.y, BENCH.z + 0.05));
     this.registry.rehome('battery-wrong', this.scene, new Vector3(BENCH.x + 0.05, BENCH.y, BENCH.z + 0.05));

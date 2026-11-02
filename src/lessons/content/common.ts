@@ -110,3 +110,61 @@ export function lowerStep(requires: string[], skip?: MistakeDef): StepDef {
     stepEffects: [{ fx: 'lift-lower' }],
   };
 }
+
+export const NO_EXHAUST_HOSE: MistakeDef = {
+  code: 'safety.exhaust.no_hose',
+  kind: 'safety',
+  label: 'Ran the engine indoors without the exhaust hose',
+  explain:
+    'Engine exhaust contains carbon monoxide. You cannot see or smell it, and in a closed shop it builds up fast enough to make people pass out. Clip the exhaust extraction hose over the tailpipe before the engine runs indoors.',
+  consequence: 'co-alarm',
+};
+
+/** Clip the shop's exhaust extraction hose over the tailpipe. */
+export function exhaustStep(id = 'exhaust'): StepDef {
+  return {
+    id,
+    label: 'Connect the exhaust extraction hose',
+    say: 'The engine is about to run indoors. Take the exhaust hose from the reel behind the car and clip it over the tailpipe.',
+    hint: 'Before the engine runs in the shop, the exhaust has to go somewhere safe.',
+    why: 'The extraction system pulls the exhaust outside, so nobody in the shop breathes carbon monoxide.',
+    spot: 'exhaust',
+    item: 'exhaust-hose',
+    targets: ['tailpipe'],
+    gesture: { kind: 'press' },
+    skipMistake: NO_EXHAUST_HOSE,
+    effects: [{ fx: 'hose-on' }],
+    safety: true,
+  };
+}
+
+/** Start the engine (it needs the exhaust hose first). */
+export function runEngineStep(id: string, label: string, say: string, requires: string[]): StepDef {
+  return {
+    id,
+    label,
+    say,
+    hint: 'The start button is on the dash, through the driver window.',
+    spot: 'driver',
+    item: HAND,
+    targets: ['start-button'],
+    gesture: { kind: 'press' },
+    requires,
+    effects: [{ fx: 'engine-run' }],
+  };
+}
+
+/** Turn the engine off. */
+export function engineOffStep(id: string, say: string): StepDef {
+  return {
+    id,
+    label: 'Turn the engine off',
+    say,
+    hint: 'Engine off before your hands go near the ignition parts.',
+    spot: 'driver',
+    item: HAND,
+    targets: ['start-button'],
+    gesture: { kind: 'press' },
+    effects: [{ fx: 'engine-off' }],
+  };
+}

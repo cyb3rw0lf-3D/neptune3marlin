@@ -217,3 +217,18 @@ test('the floor jack pumps with real up-and-down controller strokes', async ({ p
   await setTrigger(page, 0);
   await expect.poll(async () => (await state(page)).step).toBe('stands');
 });
+
+test('reads codes on the handheld scan tool with a controller ray', async ({ page }) => {
+  await enterVR(page);
+  await call(page, 'createProfile', 'Vee');
+  await call(page, 'startLesson', 'obd2', 'practice', 'sedan', 1);
+  await expect.poll(async () => (await state(page)).dialogButtons).toContain('begin');
+  await call(page, 'clickDialog', 'begin');
+  await call(page, 'autoplay', false, 'read-codes');
+  await call(page, 'teleport', 'driver');
+  await page.waitForTimeout(400);
+  await aimAt(page, await call(page, 'buttonWorld', 'scan', 'scan-read'));
+  await pullTrigger(page);
+  await expect.poll(async () => (await state(page)).step).toBe('freeze-frame');
+  expect((await state(page)).scanPage).toBe('codes');
+});

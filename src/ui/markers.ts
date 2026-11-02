@@ -147,13 +147,25 @@ export class Markers {
     this.reading.setDraw((p) => {
       p.background(22);
       p.text(title, 24, 14, { size: 26, color: UI.muted, maxWidth: p.widthPx - 48 });
-      p.text(value, 24, 48, { size: 50, bold: true, maxWidth: p.widthPx - 48 });
-      if (note) p.text(note, 24, 108, { size: 22, color: UI.muted, maxWidth: p.widthPx - 48 });
+      if (value.length <= 16) {
+        p.text(value, 24, 48, { size: 50, bold: true, maxWidth: p.widthPx - 48 });
+      } else {
+        // Findings in words ("Cracked through at the bend") wrap onto two lines.
+        p.paragraph(value, 24, 46, p.widthPx - 48, { size: 28, bold: true, maxLines: 2 });
+      }
+      if (note) p.text(note, 24, 112, { size: 22, color: UI.muted, maxWidth: p.widthPx - 48 });
     });
   }
 
   /** Shows the inspection tag popup: what was found, and three calls to pick from. */
-  showTag(anchor: Object3D, title: string, finding: string, options: string[], onPick: (i: number) => void): void {
+  showTag(
+    anchor: Object3D,
+    title: string,
+    finding: string,
+    options: string[],
+    onPick: (i: number) => void,
+    tones: number[] = [0, 1, 2],
+  ): void {
     this.hideReading();
     this.tagAnchor = anchor;
     this.tag.mesh.visible = true;
@@ -169,10 +181,11 @@ export class Markers {
         const ctx = p.ctx;
         const cx = p.widthPx - 70;
         const cy = y + 35;
-        ctx.fillStyle = swatch[i] ?? UI.muted;
+        const tone = tones[i] ?? i;
+        ctx.fillStyle = swatch[tone] ?? UI.muted;
         ctx.beginPath();
-        if (i === 0) ctx.arc(cx, cy, 16, 0, Math.PI * 2);
-        else if (i === 1) {
+        if (tone === 0) ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+        else if (tone === 1) {
           ctx.moveTo(cx, cy - 18);
           ctx.lineTo(cx + 18, cy + 14);
           ctx.lineTo(cx - 18, cy + 14);

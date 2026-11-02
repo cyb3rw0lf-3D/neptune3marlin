@@ -83,6 +83,8 @@ export class ConsequencePlayer {
         return this.steam(where);
       case 'wheel-spin':
         return this.wheelSpin();
+      case 'co-alarm':
+        return this.coAlarm();
       default:
         this.sfx.play('error');
         return this.tweens.wait(0.4);
@@ -221,6 +223,20 @@ export class ConsequencePlayer {
     if (wheel) wheel.rotation.z = 0;
     this.sfx.play('error');
     await this.tweens.wait(0.4);
+  }
+
+  /** The carbon monoxide detector goes off and the air turns grey. */
+  private async coAlarm(): Promise<void> {
+    const mat = this.flash.material as MeshBasicMaterial;
+    mat.color.setHex(0x55585c);
+    this.sfx.play('engine');
+    for (let i = 0; i < 3; i++) {
+      this.sfx.play('alarm');
+      await this.tweens.wait(0.35);
+    }
+    await this.redFlash(0.55);
+    mat.color.setHex(0xff3b30);
+    await this.tweens.wait(0.3);
   }
 
   private async carTilt(): Promise<void> {

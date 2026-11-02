@@ -109,7 +109,7 @@ export class App {
       teleport: (id) => this.teleportTo(id),
     });
     this.interaction = new Interaction(this.registry, this.session, this.sfx);
-    this.interaction.panels = [this.menus.panel, ...this.hud.panels, this.markers.tag];
+    this.interaction.panels = [this.menus.panel, ...this.hud.panels, this.markers.tag, this.world.scanTool.screen];
     this.session.onFinish = (info) => this.showReport(info);
     this.session.onQuit = () => this.toMenu();
     this.hud.onHint = () => this.session.hint();

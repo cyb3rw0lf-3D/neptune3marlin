@@ -6,7 +6,7 @@ import { VEHICLES } from '../vehicles/specs';
 import { LINES } from './lines';
 
 /** Vehicles that have 3D models so far. */
-export const BUILT_VEHICLES = ['sedan', 'pickup'] as const;
+export const BUILT_VEHICLES = ['sedan', 'pickup', 'ev'] as const;
 
 function stepLines(step: StepDef): string[] {
   const out = [step.say, step.hint];

@@ -11,10 +11,10 @@ import {
   Vector3,
 } from 'three';
 import { boxCollider, type Registry, sphereCollider } from '../interaction/registry';
-import type { TargetId, VehicleId } from '../lessons/engine/types';
+import type { TargetId } from '../lessons/engine/types';
 import { build } from '../world/lowpoly';
 import { C } from '../world/palette';
-import { type BodyContext, buildPickupBody, buildSedanBody } from './bodies';
+import { type BodyContext, buildEvBody, buildPickupBody, buildSedanBody } from './bodies';
 import { LAYOUTS, type V3, type VehicleLayout } from './layout';
 import { type VehicleSpec, WHEEL_NAMES, WHEELS, type WheelPos } from './specs';
 
@@ -89,12 +89,18 @@ export class Vehicle {
   readonly fillCapHome: Vector3;
   readonly dipstickHome: Vector3;
   readonly liftPoints: Record<WheelPos, Vector3>;
+  /** Ignition coils, one per cylinder (gas engines only), and where each one sits. */
+  readonly coils: Mesh[] = [];
+  readonly coilHomes: Vector3[] = [];
+  /** EV service disconnect plug and the lockout tag that replaces it. */
+  serviceDisconnect: Mesh | null = null;
+  lockoutTag: Mesh | null = null;
   /** Target ids this vehicle registered, so they can be removed on a swap. */
   private targetIds: TargetId[] = [];
 
   constructor(spec: VehicleSpec, options: VehicleOptions = {}) {
     this.spec = spec;
-    const layout = LAYOUTS[spec.id as Exclude<VehicleId, 'ev'>];
+    const layout = LAYOUTS[spec.id];
     if (!layout) throw new Error(`No body for ${spec.name} yet`);
     this.layout = layout;
     this.root.name = `vehicle:${spec.id}`;
@@ -119,10 +125,13 @@ export class Vehicle {
       },
     };
     if (spec.id === 'pickup') buildPickupBody(ctx);
+    else if (spec.id === 'ev') buildEvBody(ctx);
     else buildSedanBody(ctx);
     this.buildHood(ctx.paint);
-    this.buildEngineBay();
+    if (layout.ev) this.buildFrunk();
+    else this.buildEngineBay();
     this.buildUnderside();
+    this.buildIceParts();
     for (const pos of WHEELS) this.buildWheel(pos);
     for (const pos of FRONT) this.buildFrontBrake(pos);
     this.buildLamps();
@@ -151,6 +160,7 @@ export class Vehicle {
       .mesh('dipstick');
     this.dipstick.position.copy(this.dipstickHome);
     this.root.add(this.dipstick);
+    if (layout.ev) for (const m of [this.drainPlug, this.oilFilter, this.fillCap, this.dipstick]) m.visible = false;
 
     // Battery: one group so it can come out of the car as a whole.
     const [bw, bh, bd] = at.batterySize;
@@ -264,8 +274,107 @@ export class Vehicle {
     this.root.add(b.mesh('engine-bay'));
   }
 
+  /** True for the electric vehicle (no engine, a high-voltage battery). */
+  get electric(): boolean {
+    return !!this.layout.ev;
+  }
+
+  /** The EV's front trunk: 12 V battery, fluids, inverter, orange HV cables and the service disconnect. */
+  private buildFrunk(): void {
+    const at = this.layout.at;
+    const ev = this.layout.ev;
+    if (!ev) return;
+    const hvOrange = 0xf0761a;
+    const inv = ev.inverter;
+    const sd = ev.serviceDisconnect;
+    const b = build()
+      // battery coolant reservoir
+      .box(0.14, 0.14, 0.12, C.white, { p: at.coolant })
+      .box(0.141, 0.006, 0.121, C.black, { p: [at.coolant[0], at.coolant[1] + 0.03, at.coolant[2]] })
+      .box(0.141, 0.006, 0.121, C.black, { p: [at.coolant[0], at.coolant[1] - 0.03, at.coolant[2]] })
+      .cyl(0.025, 0.025, 0.02, 8, 0xd85fa0, { p: [at.coolant[0], at.coolant[1] + 0.08, at.coolant[2]] })
+      .cyl(0.024, 0.024, 0.02, 8, 0x2f6fd6, { p: at.washer })
+      .box(0.1, 0.1, 0.1, C.white, { p: at.brakeFluid })
+      .cyl(0.02, 0.02, 0.02, 8, C.safetyYellow, { p: [at.brakeFluid[0], at.brakeFluid[1] + 0.06, at.brakeFluid[2]] })
+      // inverter with its high-voltage warning label
+      .box(0.3, 0.2, 0.3, 0x5a6168, { p: inv })
+      .box(0.12, 0.004, 0.08, C.safetyYellow, { p: [inv[0], inv[1] + 0.102, inv[2]] })
+      // orange HV cables from the inverter down to the pack
+      .cyl(0.018, 0.018, 0.5, 6, hvOrange, { p: [inv[0] - 0.2, inv[1] - 0.15, inv[2] - 0.08], r: [0, 0, 0.9] })
+      .cyl(0.018, 0.018, 0.5, 6, hvOrange, { p: [inv[0] - 0.2, inv[1] - 0.15, inv[2] + 0.08], r: [0, 0, 0.9] })
+      .cyl(0.014, 0.014, 0.3, 6, hvOrange, { p: [sd[0] + 0.1, sd[1] - 0.02, sd[2] - 0.12], r: [Math.PI / 2, 0, 0.3] })
+      // service disconnect socket
+      .box(0.12, 0.05, 0.08, 0x3a3f44, { p: [sd[0], sd[1] - 0.03, sd[2]] })
+      // ground stud on the body for the 12 V system
+      .box(0.04, 0.04, 0.012, C.chrome, { p: at.engineGround })
+      // cabin air filter cover under the cowl
+      .box(0.22, 0.02, 0.14, C.black, { p: ev.cabinFilter })
+      // wiper arms
+      .box(0.03, 0.015, 0.55, C.black, { p: at.wipers, r: [0, 0.25, 0] })
+      .box(0.03, 0.015, 0.55, C.black, { p: [at.wipers[0], at.wipers[1], -at.wipers[2]], r: [0, 0.25, 0] });
+    this.root.add(b.mesh('frunk'));
+
+    this.serviceDisconnect = build()
+      .box(0.1, 0.05, 0.06, hvOrange, { p: [0, 0.01, 0] })
+      .box(0.08, 0.015, 0.02, hvOrange, { p: [0, 0.045, 0] })
+      .mesh('service-disconnect');
+    this.serviceDisconnect.position.set(sd[0], sd[1], sd[2]);
+    this.root.add(this.serviceDisconnect);
+    this.lockoutTag = build()
+      .box(0.07, 0.1, 0.004, C.safetyRed, { p: [0, 0.06, 0.035] })
+      .box(0.03, 0.03, 0.03, C.safetyRed, { p: [0, 0.015, 0] })
+      .mesh('lockout-tag');
+    this.lockoutTag.position.set(sd[0], sd[1], sd[2]);
+    this.lockoutTag.visible = false;
+    this.root.add(this.lockoutTag);
+  }
+
+  /** Coils, gas cap, vacuum hose, thermostat housing and tailpipe on gas engines. */
+  private buildIceParts(): void {
+    const ice = this.layout.ice;
+    if (!ice) return;
+    const parts = build()
+      // gas cap door (closed) on the driver's side
+      .box(0.14, 0.12, 0.008, C.carBodyDark, { p: [ice.gasCap[0], ice.gasCap[1], ice.gasCap[2] + 0.004] })
+      // vacuum hose along the intake
+      .cyl(0.011, 0.011, 0.2, 6, C.black, { p: ice.vacuumHose, r: [Math.PI / 2, 0, 0] })
+      // thermostat housing where the upper hose meets the engine
+      .box(0.06, 0.06, 0.06, C.darkSteel, { p: ice.thermostat })
+      // tailpipe tip
+      .cyl(0.03, 0.03, 0.22, 8, C.chrome, {
+        p: [ice.tailpipe[0] + 0.1, ice.tailpipe[1], ice.tailpipe[2]],
+        r: [0, 0, Math.PI / 2],
+      });
+    this.root.add(parts.mesh('ice-parts'));
+    ice.coils.forEach((c, i) => {
+      const coil = build()
+        .box(0.045, 0.035, 0.045, C.black, { p: [0, 0, 0] })
+        .box(0.03, 0.02, 0.025, 0x3a3f44, { p: [0.03, 0.005, 0] })
+        .cyl(0.012, 0.012, 0.06, 6, C.black, { p: [0, -0.045, 0] })
+        .mesh(`coil-${i + 1}`);
+      const home = new Vector3(c[0], c[1] - 0.0175, c[2]);
+      coil.position.copy(home);
+      this.root.add(coil);
+      this.coils.push(coil);
+      this.coilHomes.push(home);
+    });
+  }
+
   private buildUnderside(): void {
     const at = this.layout.at;
+    const ev = this.layout.ev;
+    if (ev) {
+      // The flat high-voltage battery pack, with orange warning stripes.
+      const [w, h, d] = ev.packSize;
+      const pack = build()
+        .box(w, h, d, 0x2a2f35, { p: ev.pack })
+        .box(w * 0.98, 0.004, 0.06, 0xf0761a, { p: [ev.pack[0], ev.pack[1] - h / 2 - 0.002, ev.pack[2] + d * 0.3] })
+        .box(w * 0.98, 0.004, 0.06, 0xf0761a, { p: [ev.pack[0], ev.pack[1] - h / 2 - 0.002, ev.pack[2] - d * 0.3] })
+        .mesh('hv-pack');
+      this.root.add(pack);
+      this.occluders.push(pack);
+      return;
+    }
     const pan = build()
       .box(0.42, 0.08, 0.44, C.darkSteel, { p: [at.oilPan[0], at.oilPan[1] + 0.04, at.oilPan[2] + 0.05] })
       .mesh('oil-pan');
@@ -478,6 +587,36 @@ export class Vehicle {
     this.anchor('upper-hose', at.upperHose);
     this.anchor('wipers', at.wipers);
     this.anchor('leak-check', at.leakCheck);
+    const ice = L.ice;
+    if (ice) {
+      this.anchor('dlc', ice.dlc);
+      this.anchor('gas-cap', ice.gasCap);
+      this.anchor('vacuum-hose', ice.vacuumHose);
+      this.anchor('thermostat', ice.thermostat);
+      this.anchor('tailpipe', ice.tailpipe);
+      this.anchor('engine-cover', [at.fillCap[0], at.fillCap[1], at.fillCap[2] - 0.15]);
+      ice.coils.forEach((c, i) => {
+        this.anchor(`coil-${i + 1}`, c);
+        this.anchor(`plug-well-${i + 1}`, [c[0], c[1] - 0.02, c[2]]);
+        // The boot of the coil moves with it when it comes out.
+        const coil = this.coils[i];
+        if (coil) this.anchor(`coil-boot-${i + 1}`, [0, -0.07, 0], coil);
+      });
+    }
+    const ev = L.ev;
+    if (ev) {
+      this.anchor('hv-pack', [ev.pack[0] + 0.6, ev.pack[1], -ev.packSize[2] / 2 + 0.02]);
+      this.anchor('inverter', [ev.inverter[0], ev.inverter[1] + 0.1, ev.inverter[2]]);
+      this.anchor('hv-cable', [ev.inverter[0] - 0.2, ev.inverter[1] - 0.06, ev.inverter[2] + 0.08]);
+      this.anchor('service-disconnect', [
+        ev.serviceDisconnect[0],
+        ev.serviceDisconnect[1] + 0.03,
+        ev.serviceDisconnect[2],
+      ]);
+      this.anchor('hv-test', [ev.serviceDisconnect[0], ev.serviceDisconnect[1] - 0.01, ev.serviceDisconnect[2] - 0.05]);
+      this.anchor('cabin-filter', ev.cabinFilter);
+      this.anchor('charge-port', ev.chargePort);
+    }
   }
 
   /** Registers every vehicle target with the interaction registry. */
@@ -489,15 +628,22 @@ export class Vehicle {
       reg.addTarget(id, label, a, col);
       this.targetIds.push(id);
     };
-    t('hood-latch', 'Hood latch', 'hood-latch', boxCollider(0.2, 0.15, 0.9));
-    t('fill-cap', 'Oil fill cap', 'fill-cap', sphereCollider(0.06));
-    t('fill-neck', 'Oil fill opening', 'fill-cap', sphereCollider(0.08));
-    t('dipstick', 'Engine oil dipstick', 'dipstick', sphereCollider(0.06));
-    t('drain-plug', 'Oil drain plug', 'drain-plug', sphereCollider(0.07));
-    t('filter', 'Oil filter', 'filter', sphereCollider(0.09));
-    t('filter-mount', 'Oil filter mount', 'filter', sphereCollider(0.1));
-    t('oil-pan', 'Oil pan', 'oil-pan', boxCollider(0.4, 0.1, 0.4));
-    t('start-button', 'Engine start button', 'start-button', sphereCollider(0.08));
+    const ev = this.electric;
+    t('hood-latch', ev ? 'Frunk latch' : 'Hood latch', 'hood-latch', boxCollider(0.2, 0.15, 0.9));
+    if (!ev) {
+      t('fill-cap', 'Oil fill cap', 'fill-cap', sphereCollider(0.06));
+      t('fill-neck', 'Oil fill opening', 'fill-cap', sphereCollider(0.08));
+      t('dipstick', 'Engine oil dipstick', 'dipstick', sphereCollider(0.06));
+      t('drain-plug', 'Oil drain plug', 'drain-plug', sphereCollider(0.07));
+      t('filter', 'Oil filter', 'filter', sphereCollider(0.09));
+      t('filter-mount', 'Oil filter mount', 'filter', sphereCollider(0.1));
+      t('oil-pan', 'Oil pan', 'oil-pan', boxCollider(0.4, 0.1, 0.4));
+      t('radiator-cap', 'Radiator pressure cap', 'radiator-cap', sphereCollider(0.05));
+      t('air-filter', 'Air filter box', 'air-filter', boxCollider(0.28, 0.06, 0.3));
+      t('drive-belt', 'Drive belt', 'drive-belt', boxCollider(0.22, 0.14, 0.06));
+      t('upper-hose', 'Upper radiator hose', 'upper-hose', boxCollider(0.24, 0.06, 0.06));
+    }
+    t('start-button', ev ? 'Power button' : 'Engine start button', 'start-button', sphereCollider(0.08));
     t('light-switch', 'Headlight switch', 'light-switch', sphereCollider(0.07));
     t('driver-seat', "Driver's seat (brake pedal)", 'driver-seat', boxCollider(0.3, 0.25, 0.12));
     t('placard', 'Tire pressure placard', 'placard', boxCollider(0.16, 0.12, 0.04));
@@ -517,16 +663,47 @@ export class Vehicle {
     t('batt-holddown', 'Battery hold-down', 'batt-holddown', sphereCollider(0.04));
     t('cable-pos', 'Positive cable end', 'cable-pos', sphereCollider(0.035));
     t('cable-neg', 'Negative cable end', 'cable-neg', sphereCollider(0.035));
-    t('engine-ground', 'Bare metal engine bracket', 'engine-ground', sphereCollider(0.045));
-    t('coolant-reservoir', 'Coolant reservoir', 'coolant-reservoir', boxCollider(0.16, 0.18, 0.14));
-    t('radiator-cap', 'Radiator pressure cap', 'radiator-cap', sphereCollider(0.05));
+    t(
+      'engine-ground',
+      ev ? 'Bare metal ground stud' : 'Bare metal engine bracket',
+      'engine-ground',
+      sphereCollider(0.045),
+    );
+    t(
+      'coolant-reservoir',
+      ev ? 'Battery coolant reservoir' : 'Coolant reservoir',
+      'coolant-reservoir',
+      boxCollider(0.16, 0.18, 0.14),
+    );
     t('washer-cap', 'Washer fluid cap', 'washer-cap', sphereCollider(0.045));
     t('brake-reservoir', 'Brake fluid reservoir', 'brake-reservoir', boxCollider(0.12, 0.12, 0.12));
-    t('air-filter', 'Air filter box', 'air-filter', boxCollider(0.28, 0.06, 0.3));
-    t('drive-belt', 'Drive belt', 'drive-belt', boxCollider(0.22, 0.14, 0.06));
-    t('upper-hose', 'Upper radiator hose', 'upper-hose', boxCollider(0.24, 0.06, 0.06));
     t('wipers', 'Wiper blades', 'wipers', boxCollider(0.1, 0.06, 0.5));
     t('leak-check', 'Floor under the front of the car', 'leak-check', boxCollider(0.5, 0.06, 1.0));
+    const ice = this.layout.ice;
+    if (ice) {
+      // The OBD-II port sits under the dash; it is reached through the open driver's window.
+      t('dlc', 'OBD-II port (under the dash)', 'dlc', boxCollider(0.22, 0.16, 0.12));
+      t('gas-cap', 'Gas cap', 'gas-cap', boxCollider(0.16, 0.14, 0.08));
+      t('vacuum-hose', 'Vacuum hose', 'vacuum-hose', boxCollider(0.06, 0.05, 0.22));
+      t('thermostat', 'Thermostat housing', 'thermostat', sphereCollider(0.05));
+      t('tailpipe', 'Tailpipe', 'tailpipe', sphereCollider(0.07));
+      t('engine-cover', 'Engine cover', 'engine-cover', boxCollider(0.25, 0.05, 0.2));
+      ice.coils.forEach((_, i) => {
+        const n = i + 1;
+        t(`coil-${n}`, `Ignition coil, cylinder ${n}`, `coil-${n}`, sphereCollider(0.04));
+        t(`plug-well-${n}`, `Spark plug well, cylinder ${n}`, `plug-well-${n}`, sphereCollider(0.035));
+        t(`coil-boot-${n}`, `Coil boot, cylinder ${n}`, `coil-boot-${n}`, sphereCollider(0.035));
+      });
+    }
+    if (this.layout.ev) {
+      t('hv-pack', 'High-voltage battery pack', 'hv-pack', boxCollider(0.5, 0.16, 0.16));
+      t('inverter', 'Inverter (high voltage)', 'inverter', boxCollider(0.3, 0.06, 0.3));
+      t('hv-cable', 'Orange high-voltage cable', 'hv-cable', sphereCollider(0.06));
+      t('service-disconnect', 'High-voltage service disconnect', 'service-disconnect', sphereCollider(0.06));
+      t('hv-test', 'High-voltage test points', 'hv-test', sphereCollider(0.04));
+      t('cabin-filter', 'Cabin air filter cover', 'cabin-filter', boxCollider(0.22, 0.05, 0.16));
+      t('charge-port', 'Charge port', 'charge-port', boxCollider(0.16, 0.12, 0.06));
+    }
     for (const pos of WHEELS) {
       const name = WHEEL_NAMES[pos];
       t(`valve-${pos}`, `Valve stem, ${name}`, `valve-${pos}`, sphereCollider(0.05));
@@ -649,9 +826,21 @@ export class Vehicle {
     this.battery.quaternion.identity();
     this.battery.scale.setScalar(1);
     this.battery.visible = true;
-    this.drainPlug.visible = true;
-    this.oilFilter.visible = true;
-    this.fillCap.visible = true;
+    const engine = !this.electric;
+    this.drainPlug.visible = engine;
+    this.oilFilter.visible = engine;
+    this.fillCap.visible = engine;
+    this.coils.forEach((c, i) => {
+      c.position.copy(this.coilHomes[i] as Vector3);
+      c.rotation.set(0, 0, 0);
+      this.root.add(c);
+      c.visible = true;
+    });
+    if (this.serviceDisconnect) {
+      this.serviceDisconnect.visible = true;
+      this.serviceDisconnect.position.set(...(this.layout.ev?.serviceDisconnect ?? [0, 0, 0]));
+    }
+    if (this.lockoutTag) this.lockoutTag.visible = false;
     this.fillCap.position.copy(this.fillCapHome);
     this.dipstick.position.copy(this.dipstickHome);
     this.root.position.set(0, 0, 0);
