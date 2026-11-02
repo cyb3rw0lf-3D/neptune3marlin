@@ -45,7 +45,19 @@ Each lesson runs on every vehicle it suits. Gas-engine lessons skip the EV, the 
 
 Whenever an engine runs indoors in the diagnostics and spark plug lessons, the shop's exhaust extraction hose goes on the tailpipe first; skipping it is a safety error.
 
-Later stages add a **Shop mode** career (customers, diagnosis, quotes, money, reputation and upgrades), then an online **teacher dashboard**.
+A later stage adds an online **teacher dashboard**.
+
+## Shop mode
+
+Shop mode turns the lessons into a career at your own repair shop. A shift has 3 to 5 customers:
+
+1. **The counter.** A customer walks up and describes a problem in their own voice. Ask questions (some help, some are small talk), then pick the service that fits. A wrong pick costs a little reputation.
+2. **The estimate.** It is priced like a real repair order: book labor hours at a $120/hr shop rate, parts marked up 40% from cost, shop supplies and sales tax. The customer approves it, and their car drives in through the bay door.
+3. **The job.** It runs as a Practice lesson on that car, with the customer's scenario (for example, the OBD-II fault they described). Hints still work, but each one costs the shop $10. A safety error stops the job with no charge.
+4. **The courtesy check.** Some cars get one extra look at the end, at the wipers or the tires. The part may really be worn, or it may be fine. Recommend real problems and the customer may approve the extra work. Flag a good part and Valkyrie calls it out as an upsell.
+5. **The bill.** Pay, tips for quick and clean work, and reputation changes are shown after every job. Mistakes that would leave a defect (a drain plug under-torqued, lug nuts out of spec) bring the car back next shift as an unpaid **comeback**.
+
+The end-of-shift **day sheet** totals income, parts, hints, tips and reputation. Reputation unlocks new work in tiers: sedan basics first, then brakes and battery, the pickup, diagnostics and spark plugs, and finally the Wren EV. Money buys upgrades that change the work: a cordless impact wrench, a digital torque wrench (shows IN SPEC), a pro scan tool (repair tips for each code), a digital battery analyzer (state of health) and a wheel balancer (lets the shop sell tires).
 
 > Specs in the game are typical example values for fictional vehicles. Real service work always follows the manufacturer's service information.
 
@@ -58,7 +70,13 @@ Later stages add a **Shop mode** career (customers, diagnosis, quotes, money, re
 
 Like a real shop, you can only work on what you can reach: solid things (the car body, the lift, the cart) block your pointer, so walk to the part or crouch down to it.
 
-Settings include US or metric units, seated play, height calibration, caption size, snap-turn angle, reduced motion and volume.
+Settings include US or metric units, seated play, height calibration, snap-turn angle and volume.
+
+**Accessibility** settings:
+- Text size from small to extra large. Extra large also enlarges the floating panels in VR.
+- A color-blind-safe palette (Okabe-Ito colors) or a high-contrast palette. Inspection tags and dialogs use shapes and icons as well as colors.
+- One-handed play: the main-hand stick both teleports and snap turns. One stick does both automatically whenever only one controller is connected.
+- Reduced motion for mistake replays.
 
 ## Hosting on GitHub Pages
 
@@ -87,37 +105,43 @@ src/
   core/         settings, saves (per-device student profiles), units, tweens
   lessons/      engine (pure lesson state machine + scoring), content (one file per lesson),
                 session (runs a lesson in the world), consequences (mistake replays)
+  shop/         Shop mode: price book, jobs, customers, pay and reputation, shifts, comebacks
+                (all pure and unit-tested), plus the controller that runs a shift
   world/        garage, two-post lift, tool cart, floor jack and stands, jump pack, scan tool,
-                exhaust reel, EV safety kit, low-poly helpers
+                exhaust reel, EV safety kit, service counter and customers, low-poly helpers
   vehicles/     shared vehicle model, sedan, pickup and EV bodies, part layouts, example specs
   interaction/  tool grabbing, gestures, targets and the interaction registry
   input/        WebXR controllers / hands / transient pointers, mouse / keyboard / touch
   locomotion/   teleport, snap turn, seated height, desktop movement
   guide/        Valkyrie the drone and narration
   ui/           in-world panels: menus, clipboard, captions, dialogs, records
-tests/unit      Vitest: lesson engine, scoring, units, saves, gestures, content validation
-tests/e2e       Playwright: every lesson on both vehicles (with a check that every part can be
-                reached from a work spot), real mouse input, VR emulation, render budget
+tests/unit      Vitest: lesson engine, scoring, units, saves, gestures, content validation, Shop economy
+tests/e2e       Playwright: every lesson on every vehicle (with a check that every part can be
+                reached from a work spot), Shop shifts, real mouse input, VR emulation, render budget
 scripts/        narration generator
+audio-src/      single narration clips (the game loads packs built from them)
 ```
 
 Lessons are data: each step names the tool, the target part, the gesture and any spec, plus the mistakes that can happen and what they would cause. Mistake codes (like `safety.lift.not_locked`) are stable, so report cards and the future dashboard can group them.
 
 ### Narration
 
-Valkyrie's lines are pre-recorded so every headset hears the same voice (the Quest browser's own speech synthesis is unreliable). After changing any lesson text, regenerate the clips:
+Valkyrie's and the customers' lines are pre-recorded so every headset hears the same voices (the Quest browser's own speech synthesis is unreliable). After changing any lesson, job or customer text, regenerate the clips:
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install piper-tts
-# download en_US-kristin-medium.onnx and .onnx.json from huggingface.co/rhasspy/piper-voices
-PIPER_PYTHON=.venv/bin/python PIPER_VOICE=path/to/en_US-kristin-medium.onnx npm run narration
+# download the kristin, ljspeech, norman, john and bryce medium voices (.onnx and .onnx.json)
+# from huggingface.co/rhasspy/piper-voices into one folder
+PIPER_PYTHON=.venv/bin/python PIPER_VOICES=path/to/voices npm run narration
 ```
 
-A unit test fails if any scripted line is missing a clip. Lines without a clip fall back to the browser's speech synthesis, and captions are always shown.
+Single clips are kept in `audio-src/narration`, and only new lines are recorded. The script then packs every clip into about 75 audio files in `public/audio/narration`, with a manifest of where each line starts. The game plays slices of the packs, which keeps hosting simple. A unit test fails if any line is missing a clip. Lines without a clip fall back to the browser's speech synthesis, and captions are always shown.
 
 ## Credits
 
-- Narration voice: [Piper](https://github.com/OHF-Voice/piper1-gpl) with the *Kristin* voice, trained from scratch on public-domain LibriVox recordings ([model card](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/kristin/medium)). Piper is only used at build time.
+- Voices: [Piper](https://github.com/OHF-Voice/piper1-gpl), used only at build time, with these voices from [piper-voices](https://huggingface.co/rhasspy/piper-voices):
+  - Valkyrie: *Kristin*, trained from scratch on public-domain LibriVox recordings ([model card](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/kristin/medium)).
+  - Customers: *LJSpeech* (public-domain LJ Speech dataset), and *Norman*, *John* and *Bryce* (public domain; [model cards](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US)).
 - Font: [Atkinson Hyperlegible](https://brailleinstitute.org/freefont) by the Braille Institute (SIL Open Font License).
 - 3D engine: [three.js](https://threejs.org) (MIT). VR emulation in tests: [IWER](https://github.com/meta-quest/immersive-web-emulation-runtime) (MIT).
 - All 3D models and sound effects are generated in code.

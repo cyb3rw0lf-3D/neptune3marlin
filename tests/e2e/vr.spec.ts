@@ -232,3 +232,20 @@ test('reads codes on the handheld scan tool with a controller ray', async ({ pag
   await expect.poll(async () => (await state(page)).step).toBe('freeze-frame');
   expect((await state(page)).scanPage).toBe('codes');
 });
+
+test('asks a customer a question and writes up the job with a controller ray', async ({ page }) => {
+  await enterVR(page);
+  await call(page, 'createProfile', 'Vee');
+  await call(page, 'startShift', 3);
+  await expect.poll(async () => (await state(page)).dialogButtons).toContain('shop-ask-0');
+  await page.waitForTimeout(400);
+  await aimAt(page, await call(page, 'buttonWorld', 'dialog', 'shop-ask-0'));
+  await pullTrigger(page);
+  await expect
+    .poll(async () => ((await state(page)) as unknown as { shop: { asked: number[] } }).shop.asked)
+    .toEqual([0]);
+  await page.waitForTimeout(300);
+  await aimAt(page, await call(page, 'buttonWorld', 'dialog', 'shop-write-up'));
+  await pullTrigger(page);
+  await expect.poll(async () => (await state(page)).dialogButtons).toContain('shop-svc-back');
+});

@@ -261,7 +261,11 @@ export class Hud {
     }
   }
 
+  /** The dialog on screen now (read by tests). */
+  current: DialogSpec | null = null;
+
   openDialog(spec: DialogSpec): void {
+    this.current = spec;
     this.dialogOpen = true;
     this.dialog.mesh.visible = true;
     this.dialog.hoverId = null;
@@ -313,6 +317,7 @@ export class Hud {
   }
 
   closeDialog(): void {
+    this.current = null;
     this.dialogOpen = false;
     this.dialog.mesh.visible = false;
   }
