@@ -40,7 +40,44 @@ export function installTestHooks(app: App): void {
         scanPage: app.world.scanTool.page,
         tagOpen: app.markers.tagOpen,
         profiles: app.save.data.profiles.map((p) => p.name),
+        shop: api.shopState(),
       };
+    },
+    shopState() {
+      const sh = app.shop;
+      const save = app.save.shop();
+      return {
+        active: sh.active,
+        phase: sh.phase,
+        index: sh.index,
+        jobs: sh.jobs.map((j) => ({
+          job: j.job.id,
+          lesson: j.job.lesson,
+          service: j.job.service,
+          vehicle: j.vehicle,
+          extra: j.extra,
+          comeback: j.comeback?.cause ?? null,
+        })),
+        asked: [...sh.asked],
+        wrongPicks: sh.wrongPicks,
+        money: save.money,
+        rep: save.rep,
+        upgrades: [...save.upgrades],
+        pending: save.pending.map((p) => p.cause ?? ''),
+        days: save.days.length,
+        customer: app.world.customer ? app.world.customer.root.position.toArray() : null,
+        carPos: app.world.vehicle.root.position.toArray(),
+        carVisible: app.world.vehicle.root.visible,
+      };
+    },
+    /** Sets up the active profile's shop (tests start at a chosen reputation or with upgrades). */
+    setShop(patch: { money?: number; rep?: number; upgrades?: string[]; pending?: unknown[] }) {
+      const shop = app.save.shop();
+      Object.assign(shop, patch);
+      app.save.persist();
+    },
+    startShift(seed = 1) {
+      app.startShift(seed);
     },
     begin() {
       app.begin();

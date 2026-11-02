@@ -124,7 +124,7 @@ const SCAN_HOOK = new Vector3(0.15, 1.3, 1.24);
 const LOCKBOX = new Vector3(-3.45, 0.98, -5.45);
 /** The service counter by the bay door; customers stand on the room side. */
 const COUNTER = new Vector3(-5.2, 1.02, 5.2);
-const CUSTOMER_SPOT = new Vector3(-5.2, 0, 4.35);
+const CUSTOMER_SPOT = new Vector3(-5.55, 0, 3.85);
 const CUSTOMER_DOOR = new Vector3(-1.6, 0, 6.6);
 /** Where a Shop car waits before it drives in through the bay door. */
 const OUTSIDE = new Vector3(1.0, 0, 11.5);
@@ -1065,7 +1065,8 @@ export class World {
       ['donor', 'Donor car', [DONOR_NOSE_X + 0.25, 0, 1.25], [DONOR_NOSE_X + 0.6, 0.8, 0.3]],
       ['exhaust', 'Tailpipe', [x + L.rear - 0.55, 0, 0.95], [x + (L.ice?.tailpipe[0] ?? L.rear), 0.3, 0.3]],
       ['ev-kit', 'HV safety kit', [nose + 1.0, 0, -L.halfWidth + 0.15], [nose + 1.0, 0.85, -L.halfWidth - 0.75]],
-      ['counter', 'Service counter', [COUNTER.x, 0, COUNTER.z + 0.42], [COUNTER.x, 1.45, CUSTOMER_SPOT.z]],
+      // Looks a little to the customer's side so they stand beside the counter dialog, not behind it.
+      ['counter', 'Service counter', [COUNTER.x, 0, COUNTER.z + 0.42], [CUSTOMER_SPOT.x - 1.0, 1.65, CUSTOMER_SPOT.z]],
     ];
   }
 
@@ -1332,8 +1333,8 @@ export class World {
     this.customerWalking = true;
     await tweens.run(Math.max(0.4, d.length() / 1.3), (t) => c.root.position.lerpVectors(from, to, t));
     this.customerWalking = false;
-    // Face the counter (+z) once there.
-    if (toCounter) c.root.rotation.y = 0;
+    // Face the person behind the counter once there.
+    if (toCounter) c.root.rotation.y = Math.atan2(COUNTER.x - to.x, COUNTER.z + 0.42 - to.z);
   }
 
   /** Parks the current car outside the bay door, out of sight. */

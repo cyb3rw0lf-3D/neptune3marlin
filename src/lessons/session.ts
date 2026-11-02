@@ -82,8 +82,10 @@ export interface RunOptions {
   intro?: string;
   /** Digital torque wrench upgrade: the dial says when the setting is in spec. */
   digitalTorque?: boolean;
-  /** Shown on the clipboard under the title. */
+  /** Shown on the clipboard instead of the lesson title. */
   banner?: string;
+  /** Runs after the bay is set up and before the start dialog (a Shop car driving in). */
+  beforeBegin?: () => Promise<void>;
 }
 
 const MODE_NAME: Record<Mode, string> = { learn: 'Learn', practice: 'Practice', test: 'Test' };
@@ -180,16 +182,21 @@ export class LessonSession implements InteractionHooks {
     const intro =
       opts.intro ?? (mode === 'learn' ? lesson.intro : mode === 'practice' ? LINES.practiceIntro : LINES.testIntro);
     this.busy = true;
-    d.hud.openDialog({
-      tone: mode === 'test' ? 'warn' : 'info',
-      title: opts.title ?? `${lesson.title}: ${MODE_NAME[mode]}`,
-      body: `${intro}\n\nVehicle: ${vehicle.name}, ${vehicle.kind}.`,
-      buttons: [
-        { id: 'begin', label: 'Start', variant: 'primary', onClick: () => this.begin() },
-        { id: 'back', label: 'Back to menu', onClick: () => this.quit() },
-      ],
-    });
-    void this.narrate([intro]);
+    const showStart = () => {
+      if (this.runner === null || this.lesson !== lesson) return;
+      d.hud.openDialog({
+        tone: mode === 'test' ? 'warn' : 'info',
+        title: opts.title ?? `${lesson.title}: ${MODE_NAME[mode]}`,
+        body: `${intro}\n\nVehicle: ${vehicle.name}, ${vehicle.kind}.`,
+        buttons: [
+          { id: 'begin', label: 'Start', variant: 'primary', onClick: () => this.begin() },
+          { id: 'back', label: 'Back to menu', onClick: () => this.quit() },
+        ],
+      });
+      void this.narrate([intro]);
+    };
+    if (opts.beforeBegin) void opts.beforeBegin().then(showStart);
+    else showStart();
   }
 
   private workOrder: string[] = [];
@@ -218,6 +225,12 @@ export class LessonSession implements InteractionHooks {
   }
 
   quit(): void {
+    this.quietQuit();
+    this.onQuit();
+  }
+
+  /** Ends the run without going back to the menu (Shop mode moves on to the next customer). */
+  quietQuit(): void {
     this.stopNarration();
     this.d.hud.closeDialog();
     this.d.markers.hideTag();
@@ -228,7 +241,6 @@ export class LessonSession implements InteractionHooks {
     this.d.interaction().releaseAll(this.d.pointers());
     this.d.sfx.stopAll();
     this.runner = null;
-    this.onQuit();
   }
 
   restart(): void {
