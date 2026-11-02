@@ -68,6 +68,7 @@ export const tireService: LessonDef<TireVariant> = {
     `Tires: ${vehicle.tires.size}, ${vehicle.drivetrain}`,
     'Pressure: see the door placard',
     `Lug nuts: ${formatBoth('torque', vehicle.tires.lugTorque, units)}, star pattern`,
+    ...(vehicle.hv ? ['EV: heavy and quick, check wear closely'] : []),
   ],
   steps: (vehicle, v, units) => tireSteps(vehicle, v, units),
 };

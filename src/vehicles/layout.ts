@@ -57,9 +57,29 @@ export interface VehicleLayout {
     headlights: { x: number; y: number; z: number; size: V3 };
     taillights: { x: number; y: number; z: number; size: V3 };
   };
+  /** Gasoline-engine parts used by the OBD-II and spark plug lessons. */
+  ice?: {
+    /** OBD-II data link connector under the dash (reached through the driver's window). */
+    dlc: V3;
+    gasCap: V3;
+    /** Ignition coil tops, cylinder 1 first. */
+    coils: V3[];
+    vacuumHose: V3;
+    thermostat: V3;
+    tailpipe: V3;
+  };
+  /** Electric-vehicle parts: the high-voltage system. */
+  ev?: {
+    pack: V3;
+    packSize: V3;
+    inverter: V3;
+    serviceDisconnect: V3;
+    cabinFilter: V3;
+    chargePort: V3;
+  };
 }
 
-export const LAYOUTS: Record<Exclude<VehicleId, 'ev'>, VehicleLayout> = {
+export const LAYOUTS: Record<VehicleId, VehicleLayout> = {
   sedan: {
     wheelX: { front: 1.35, rear: -1.35 },
     trackZ: 0.76,
@@ -105,6 +125,19 @@ export const LAYOUTS: Record<Exclude<VehicleId, 'ev'>, VehicleLayout> = {
       leakCheck: [2.6, 0.02, 0],
       headlights: { x: 2.275, y: 0.68, z: 0.58, size: [0.05, 0.07, 0.32] },
       taillights: { x: -2.295, y: 0.84, z: 0.58, size: [0.05, 0.08, 0.34] },
+    },
+    ice: {
+      dlc: [0.65, 1.05, -0.84],
+      gasCap: [-1.65, 0.82, -0.875],
+      coils: [
+        [1.62, 0.885, -0.21],
+        [1.62, 0.885, -0.07],
+        [1.62, 0.885, 0.07],
+        [1.62, 0.885, 0.21],
+      ],
+      vacuumHose: [1.53, 0.89, 0.06],
+      thermostat: [1.95, 0.82, 0.08],
+      tailpipe: [-2.33, 0.2, 0.35],
     },
   },
   pickup: {
@@ -152,6 +185,78 @@ export const LAYOUTS: Record<Exclude<VehicleId, 'ev'>, VehicleLayout> = {
       leakCheck: [3.3, 0.02, 0],
       headlights: { x: 2.975, y: 1.08, z: 0.72, size: [0.05, 0.12, 0.3] },
       taillights: { x: -2.985, y: 1.05, z: 0.88, size: [0.05, 0.3, 0.1] },
+    },
+    ice: {
+      dlc: [0.85, 1.38, -0.96],
+      gasCap: [-1.2, 1.1, -0.985],
+      // Right bank front to back (1-2-3), then the left bank (4-5-6).
+      coils: [
+        [2.25, 1.15, 0.27],
+        [2.0, 1.15, 0.27],
+        [1.75, 1.15, 0.27],
+        [2.25, 1.15, -0.27],
+        [2.0, 1.15, -0.27],
+        [1.75, 1.15, -0.27],
+      ],
+      vacuumHose: [2.36, 1.145, -0.12],
+      thermostat: [2.45, 1.1, 0.02],
+      tailpipe: [-3.05, 0.45, 0.3],
+    },
+  },
+  ev: {
+    wheelX: { front: 1.35, rear: -1.4 },
+    trackZ: 0.8,
+    wheelR: 0.34,
+    tireW: 0.235,
+    rimR: 0.24,
+    lugRadius: 0.058,
+    front: 2.12,
+    rear: -2.17,
+    halfWidth: 0.95,
+    liftPoints: {
+      FL: [0.95, 0.3, -0.87],
+      FR: [0.95, 0.3, 0.87],
+      RL: [-1.0, 0.3, -0.87],
+      RR: [-1.0, 0.3, 0.87],
+    },
+    jackPoint: [1.62, 0.25, 0],
+    standPoints: { FL: [0.95, 0.3, -0.87], FR: [0.95, 0.3, 0.87] },
+    jackRaise: 0.16,
+    hood: { pivot: [1.18, 0.95, 0], length: 0.86, width: 1.62, slope: -0.15 },
+    at: {
+      hoodLatch: [2.02, 0.75, 0],
+      placard: [-0.05, 0.8, -0.955],
+      // The EV has no engine oil; these sit hidden in the frunk and are never targets.
+      fillCap: [1.6, 0.66, 0.2],
+      dipstick: [1.6, 0.66, -0.2],
+      drainPlug: [1.6, 0.2, 0],
+      filter: [1.5, 0.2, 0],
+      oilPan: [1.55, 0.2, 0],
+      startButton: [0.85, 0.99, -0.12],
+      lightSwitch: [0.88, 0.99, -0.6],
+      driverSeat: [0.3, 1.08, -0.92],
+      battery: [1.55, 0.7, -0.42],
+      batterySize: [0.2, 0.16, 0.16],
+      coolant: [1.72, 0.69, 0.45],
+      radiatorCap: [1.9, 0.68, 0],
+      washer: [1.75, 0.72, 0.2],
+      brakeFluid: [1.3, 0.69, -0.58],
+      airFilter: [1.5, 0.66, 0.45],
+      belt: [1.6, 0.66, 0],
+      upperHose: [1.7, 0.66, 0],
+      engineGround: [1.32, 0.7, -0.25],
+      wipers: [1.1, 0.97, -0.3],
+      leakCheck: [2.4, 0.02, 0],
+      headlights: { x: 2.075, y: 0.68, z: 0.6, size: [0.05, 0.06, 0.34] },
+      taillights: { x: -2.135, y: 0.86, z: 0.62, size: [0.05, 0.08, 0.28] },
+    },
+    ev: {
+      pack: [-0.05, 0.2, 0],
+      packSize: [2.0, 0.13, 1.6],
+      inverter: [1.45, 0.72, 0.15],
+      serviceDisconnect: [1.22, 0.7, 0.42],
+      cabinFilter: [1.06, 0.95, 0.42],
+      chargePort: [-1.75, 0.82, -0.955],
     },
   },
 };

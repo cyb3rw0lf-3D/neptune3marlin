@@ -147,7 +147,10 @@ const cableMats = {
 export class Cable {
   readonly mesh: Mesh;
 
-  constructor(color: 'red' | 'black') {
+  constructor(
+    color: 'red' | 'black',
+    private readonly radius = 0.009,
+  ) {
     this.mesh = new Mesh(undefined, cableMats[color]);
     this.mesh.visible = false;
   }
@@ -173,7 +176,67 @@ export class Cable {
         .setY(b.y - 0.2),
       b,
     ]);
-    this.mesh.geometry = new TubeGeometry(curve, 16, 0.009, 4, false);
+    this.mesh.geometry = new TubeGeometry(curve, 16, this.radius, 6, false);
     this.mesh.visible = true;
   }
+}
+
+/** The shop's exhaust extraction reel: a pole with a hose that clips over a tailpipe. */
+export function buildExhaustReel(): Group {
+  const g = new Group();
+  g.name = 'exhaust-reel';
+  g.add(
+    build()
+      .box(0.4, 0.04, 0.4, C.darkSteel, { p: [0, 0.02, 0] })
+      .cyl(0.04, 0.04, 2.2, 8, C.steel, { p: [0, 1.1, 0] })
+      .cyl(0.28, 0.28, 0.16, 14, C.safetyYellow, { p: [0, 2.0, 0.12], r: [Math.PI / 2, 0, 0] })
+      .cyl(0.06, 0.06, 0.2, 8, C.black, { p: [0, 1.75, 0.12] })
+      .mesh('exhaust-reel'),
+  );
+  return g;
+}
+
+/** A small table with the high-voltage safety kit, a proving unit and a wait timer. */
+export function buildEvKitTable(): Group {
+  const g = new Group();
+  g.name = 'ev-kit';
+  g.add(
+    build()
+      .box(0.9, 0.04, 0.55, C.darkSteel, { p: [0, 0.82, 0] })
+      .box(0.04, 0.82, 0.04, C.steel, { p: [0.42, 0.41, 0.24] })
+      .box(0.04, 0.82, 0.04, C.steel, { p: [-0.42, 0.41, 0.24] })
+      .box(0.04, 0.82, 0.04, C.steel, { p: [0.42, 0.41, -0.24] })
+      .box(0.04, 0.82, 0.04, C.steel, { p: [-0.42, 0.41, -0.24] })
+      // proving unit (a known voltage source for testing the meter)
+      .box(0.1, 0.06, 0.08, 0x2f6fd6, { p: [0.32, 0.87, -0.15] })
+      .cyl(0.008, 0.008, 0.02, 6, C.safetyRed, { p: [0.3, 0.91, -0.15] })
+      .cyl(0.008, 0.008, 0.02, 6, C.black, { p: [0.34, 0.91, -0.15] })
+      // wait timer
+      .box(0.14, 0.12, 0.03, C.white, { p: [0.3, 0.9, 0.17], r: [-0.4, 0, 0] })
+      .mesh('ev-kit-table'),
+  );
+  return g;
+}
+
+/** A pair of rubber insulating gloves (class 0, orange-red). */
+export function buildGloves(color = 0xe2552c): Mesh {
+  return build()
+    .box(0.09, 0.025, 0.2, color, { p: [-0.05, 0.012, 0] })
+    .box(0.09, 0.025, 0.2, color, { p: [0.05, 0.012, 0.02] })
+    .mesh('hv-gloves');
+}
+
+/** Barrier stand with a chain toward the car, and an optional HIGH VOLTAGE sign. */
+export function buildBarrier(): Group {
+  const g = new Group();
+  g.name = 'hv-barrier';
+  g.add(
+    build()
+      .cyl(0.04, 0.16, 0.7, 8, C.orange, { p: [0, 0.35, 0.8] })
+      .cyl(0.04, 0.16, 0.7, 8, C.orange, { p: [0, 0.35, -0.8] })
+      .box(0.03, 0.03, 1.6, C.safetyYellow, { p: [0, 0.68, 0] })
+      .box(0.03, 0.03, 1.6, C.black, { p: [0, 0.6, 0] })
+      .mesh('barrier'),
+  );
+  return g;
 }

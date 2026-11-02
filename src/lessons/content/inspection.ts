@@ -22,11 +22,14 @@ interface CheckDef {
   /** Visible fault shown in the world for yellow / red. */
   visual?: string;
   hold?: number;
+  /** Only on gas engines, or only on the EV. */
+  only?: 'gas' | 'ev';
 }
 
 const CHECKS: CheckDef[] = [
   {
     id: 'oil',
+    only: 'gas',
     name: 'engine oil',
     target: 'dipstick',
     spot: 'hood',
@@ -71,6 +74,7 @@ const CHECKS: CheckDef[] = [
   },
   {
     id: 'belt',
+    only: 'gas',
     name: 'drive belt',
     target: 'drive-belt',
     spot: 'hood',
@@ -80,6 +84,7 @@ const CHECKS: CheckDef[] = [
   },
   {
     id: 'hose',
+    only: 'gas',
     name: 'upper radiator hose',
     target: 'upper-hose',
     spot: 'hood',
@@ -90,6 +95,7 @@ const CHECKS: CheckDef[] = [
   },
   {
     id: 'air-filter',
+    only: 'gas',
     name: 'engine air filter',
     target: 'air-filter',
     spot: 'hood',
@@ -115,6 +121,16 @@ const CHECKS: CheckDef[] = [
     say: 'Lift a wiper arm and run a finger along the rubber blade.',
     hint: 'The wipers sit at the bottom of the windshield.',
     findings: ['Soft rubber, clean edge', 'Hard rubber that streaks', 'Rubber torn and hanging off'],
+  },
+  {
+    id: 'cabin-filter',
+    only: 'ev',
+    name: 'cabin air filter',
+    target: 'cabin-filter',
+    spot: 'hood',
+    say: 'Open the cover under the cowl and pull out the cabin air filter. This one cleans the air the passengers breathe.',
+    hint: 'The cabin filter sits under the cowl at the base of the windshield.',
+    findings: ['Clean, light passes through', 'Gray with dust', 'Black and clogged with leaves'],
   },
   {
     id: 'lights',
@@ -157,10 +173,16 @@ export interface InspectionVariant {
   tread: number;
 }
 
-function pickFaults(rng: Rng): Record<string, Severity> {
-  const found: Record<string, Severity> = Object.fromEntries(CHECKS.map((c) => [c.id, 0 as Severity]));
+/** The checks that apply to a vehicle: no oil, belt or air filter on the EV. */
+function checksFor(vehicle: VehicleSpec): CheckDef[] {
+  const ev = !!vehicle.hv;
+  return CHECKS.filter((c) => (c.only === 'gas' ? !ev : c.only === 'ev' ? ev : true));
+}
+
+function pickFaults(rng: Rng, checks: CheckDef[]): Record<string, Severity> {
+  const found: Record<string, Severity> = Object.fromEntries(checks.map((c) => [c.id, 0 as Severity]));
   const n = 2 + Math.floor(rng() * 3);
-  const pool = [...CHECKS];
+  const pool = [...checks];
   for (let i = 0; i < n && pool.length > 0; i++) {
     const idx = Math.floor(rng() * pool.length);
     const check = pool.splice(idx, 1)[0] as CheckDef;
@@ -175,14 +197,14 @@ export const inspection: LessonDef<InspectionVariant> = {
   title: 'Multi-Point Inspection',
   summary: 'Check fluids, belts, hoses, filters, wipers and lights, and report honestly.',
   available: true,
-  vehicles: ['sedan', 'pickup'],
+  vehicles: ['sedan', 'pickup', 'ev'],
   cartItems: ['tread-gauge', 'tire-gauge', 'rag'],
   intro:
     'A multi-point inspection is a health check for the whole car. Look at every item, then make an honest call: green if it is fine, yellow if it needs attention soon, red if it needs repair now. Every car hides a different set of problems.',
   outro:
     'Inspection complete. You found what was really wrong and did not flag anything that was fine. That honesty is what keeps customers coming back.',
   variant: (rng, vehicle) => {
-    const found = pickFaults(rng);
+    const found = pickFaults(rng, checksFor(vehicle));
     const sev = found.tires ?? 0;
     const tread = sev === 0 ? vehicle.tires.newTread32 - 3 : sev === 1 ? 4 : 2;
     return { found, tread };
@@ -275,7 +297,15 @@ function inspectionSteps(vehicle: VehicleSpec, v: InspectionVariant, units: Unit
     },
   ];
 
-  for (const check of CHECKS) {
+  const ev = !!vehicle.hv;
+  if (ev) {
+    const off = steps[1] as StepDef;
+    off.label = 'Switch the car off';
+    off.say =
+      'The car just came back from a test drive and it is still on. Switch it off before you reach into the frunk.';
+    off.hint = 'Nothing goes near the cooling fan or pumps while the car is on.';
+  }
+  for (const check of checksFor(vehicle)) {
     const severity = (v.found[check.id] ?? 0) as Severity;
     let reading: Reading;
     if (check.id === 'tires') {
@@ -297,7 +327,12 @@ function inspectionSteps(vehicle: VehicleSpec, v: InspectionVariant, units: Unit
       tag: tagFor(check, severity),
       effects: [{ fx: check.id === 'lights' ? 'lights-on' : check.id === 'oil' ? 'dipstick' : 'inspect' }],
     };
-    if (check.id === 'coolant') {
+    if (check.id === 'coolant' && ev) {
+      step.label = 'Check the battery coolant';
+      step.say =
+        'The battery and motor have their own coolant loop. Check the level against the marks on the reservoir. Then make your call.';
+    }
+    if (check.id === 'coolant' && !ev) {
       step.wrongTargets = {
         'radiator-cap': {
           code: 'inspection.coolant.hot_cap',

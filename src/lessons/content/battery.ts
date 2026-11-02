@@ -88,7 +88,7 @@ export const battery: LessonDef<BatteryVariant> = {
   title: 'Battery & Jump-Start',
   summary: 'Test, disconnect in the safe order, replace a battery, and jump-start a car.',
   available: true,
-  vehicles: ['sedan', 'pickup'],
+  vehicles: ['sedan', 'pickup', 'ev'],
   cartItems: [
     'multimeter',
     'battery-tester',
@@ -102,9 +102,11 @@ export const battery: LessonDef<BatteryVariant> = {
   intro:
     "Batteries cause more no-start calls than anything else. Today's car came in with a battery complaint. You'll test it, then do what the results say: clean it, replace it, or jump-start it.",
   outro: 'Good work. Tested before guessing, and every cable went on and off in the safe order.',
-  variant: (rng) => {
+  variant: (rng, vehicle) => {
     const state = pick(rng, ['good', 'weak', 'dead'] as const);
-    const jump = pick(rng, ['cables', 'pack'] as const);
+    const picked = pick(rng, ['cables', 'pack'] as const);
+    // An EV's 12-volt battery is only ever boosted with a jump pack, never used with donor cables.
+    const jump = vehicle.hv ? 'pack' : picked;
     const r = (a: number, b: number) => Math.round((a + rng() * (b - a)) * 10) / 10;
     return {
       state,
@@ -131,6 +133,7 @@ export const battery: LessonDef<BatteryVariant> = {
 function batterySteps(vehicle: VehicleSpec, v: BatteryVariant, units: UnitSystem): StepDef[] {
   const volts = (n: number) => formatBoth('voltage', n, units);
   const group = vehicle.battery.group;
+  const ev = !!vehicle.hv;
 
   const common: StepDef[] = [
     ppeStep(
@@ -296,8 +299,10 @@ function batterySteps(vehicle: VehicleSpec, v: BatteryVariant, units: UnitSystem
     },
     {
       id: 'start',
-      label: 'Start the engine',
-      say: 'Start the engine so we can check the charging system.',
+      label: ev ? 'Switch the car on (READY)' : 'Start the engine',
+      say: ev
+        ? 'Switch the car on until it shows READY, so the DC-DC converter charges the 12-volt battery.'
+        : 'Start the engine so we can check the charging system.',
       hint: 'The start button is on the dash.',
       spot: 'driver',
       item: HAND,
@@ -308,33 +313,39 @@ function batterySteps(vehicle: VehicleSpec, v: BatteryVariant, units: UnitSystem
     {
       id: 'charging',
       label: 'Check the charging voltage',
-      say: 'With the engine running, read the voltage at the posts again. Now you are measuring the alternator.',
+      say: ev
+        ? 'With the car in READY, read the voltage at the posts again. Now you are measuring the DC-DC converter that charges the 12-volt battery.'
+        : 'With the engine running, read the voltage at the posts again. Now you are measuring the alternator.',
       hint: 'Same meter, same posts, engine running.',
       spot: 'battery',
       item: 'multimeter',
       targets: ['battery-posts'],
       gesture: { kind: 'press' },
       effects: [{ fx: 'inspect' }],
-      readings: { 'battery-posts': { quantity: 'voltage', value: v.chargingVolts, note: 'Engine running' } },
+      readings: {
+        'battery-posts': { quantity: 'voltage', value: v.chargingVolts, note: ev ? 'Car in READY' : 'Engine running' },
+      },
     },
     {
       id: 'charging-call',
       label: 'Judge the charging system',
-      say: 'Is the alternator charging correctly?',
+      say: ev ? 'Is the 12-volt battery being charged correctly?' : 'Is the alternator charging correctly?',
       hint: 'A healthy charging system reads about 13.8 to 14.7 volts.',
       item: HAND,
       targets: [],
       gesture: { kind: 'press' },
       choice: {
-        prompt: `Engine running: ${volts(v.chargingVolts)}. The normal range is ${volts(13.8)} to ${volts(14.7)}.`,
-        options: ['Charging normally', 'Not charging: alternator problem', 'Overcharging: voltage regulator problem'],
+        prompt: `${ev ? 'Car in READY' : 'Engine running'}: ${volts(v.chargingVolts)}. The normal range is ${volts(13.8)} to ${volts(14.7)}.`,
+        options: ev
+          ? ['Charging normally', 'Not charging: DC-DC converter problem', 'Overcharging: converter problem']
+          : ['Charging normally', 'Not charging: alternator problem', 'Overcharging: voltage regulator problem'],
         correct: 0,
         wrong: {
           code: 'battery.charging.misread',
           kind: 'value',
           label: 'Misjudged the charging voltage',
           explain:
-            'With the engine running, 13.8 to 14.7 volts means the alternator is charging normally. Below that it is not charging; above it, it is overcharging.',
+            'With the engine running, or an electric car in READY, 13.8 to 14.7 volts means the charging system is working normally. Below that it is not charging; above it, it is overcharging.',
         },
         right: 'Correct. The charging system is healthy, so the battery will stay charged.',
       },

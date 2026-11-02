@@ -246,3 +246,90 @@ export function buildPickupBody(ctx: BodyContext): void {
     false,
   );
 }
+
+/** The Wren EV: a compact electric hatchback with a frunk and a flat battery pack in the floor. */
+export function buildEvBody(ctx: BodyContext): void {
+  const s = new Shape();
+  s.moveTo(-2.1, 0.32);
+  s.lineTo(-1.82, 0.32);
+  s.absarc(-1.4, 0.34, 0.42, Math.PI, 0, true);
+  s.lineTo(0.93, 0.32);
+  s.absarc(1.35, 0.34, 0.42, Math.PI, 0, true);
+  s.lineTo(2.0, 0.32);
+  s.lineTo(2.1, 0.45);
+  s.lineTo(2.1, 0.7);
+  // header the frunk lid closes onto
+  s.lineTo(2.04, 0.78);
+  s.lineTo(1.96, 0.78);
+  s.lineTo(1.96, 0.62);
+  s.lineTo(1.22, 0.62);
+  s.lineTo(1.16, 0.93);
+  s.lineTo(-1.9, 0.95);
+  s.lineTo(-2.08, 0.9);
+  s.lineTo(-2.15, 0.62);
+  s.lineTo(-2.1, 0.32);
+
+  const body = build()
+    .extrude(s, 1.84, ctx.paint, {}, 0.03)
+    // fenders up to the frunk lid line
+    .box(0.8, 0.2, 0.1, ctx.paint, { p: [1.58, 0.79, 0.86], r: [0, 0, -0.15] })
+    .box(0.8, 0.2, 0.1, ctx.paint, { p: [1.58, 0.79, -0.86], r: [0, 0, -0.15] })
+    // roof and pillars
+    .box(1.5, 0.05, 1.62, ctx.paint, { p: [-0.65, 1.44, 0] })
+    .box(0.07, 0.42, 0.05, ctx.paint, { p: [-0.05, 1.18, 0.86] })
+    .box(0.07, 0.42, 0.05, ctx.paint, { p: [-0.05, 1.18, -0.86] })
+    // closed grille panel, light bar, bumpers
+    .box(0.04, 0.12, 1.2, C.black, { p: [2.1, 0.55, 0] })
+    .box(0.05, 0.06, 0.34, C.headlight, { p: [2.07, 0.68, 0.6] })
+    .box(0.05, 0.06, 0.34, C.headlight, { p: [2.07, 0.68, -0.6] })
+    .box(0.05, 0.03, 1.2, C.headlight, { p: [2.06, 0.74, 0] })
+    .box(0.05, 0.08, 0.28, C.taillight, { p: [-2.13, 0.86, 0.62] })
+    .box(0.05, 0.08, 0.28, C.taillight, { p: [-2.13, 0.86, -0.62] })
+    .box(0.05, 0.03, 0.9, C.taillight, { p: [-2.13, 0.92, 0] })
+    .box(0.08, 0.18, 1.84, C.black, { p: [2.08, 0.42, 0] })
+    .box(0.08, 0.18, 1.84, C.black, { p: [-2.14, 0.42, 0] })
+    // mirrors, door seams, charge port door
+    .box(0.12, 0.08, 0.12, ctx.trim, { p: [0.98, 1.02, 0.98] })
+    .box(0.12, 0.08, 0.12, ctx.trim, { p: [0.98, 1.02, -0.98] })
+    .box(0.01, 0.55, 0.01, ctx.trim, { p: [-0.05, 0.68, 0.955] })
+    .box(0.01, 0.55, 0.01, ctx.trim, { p: [-0.05, 0.68, -0.955] })
+    .box(0.01, 0.55, 0.01, ctx.trim, { p: [0.9, 0.68, 0.955] })
+    .box(0.01, 0.55, 0.01, ctx.trim, { p: [0.9, 0.68, -0.955] })
+    .box(0.14, 0.1, 0.006, ctx.trim, { p: [-1.75, 0.82, -0.955] })
+    // tire placard on the driver-side B-pillar
+    .box(0.1, 0.07, 0.004, C.white, { p: [-0.05, 0.8, -0.957] });
+  liftMarks(ctx, body, 0.33, 0.93);
+  ctx.add(body.mesh('body'));
+
+  const gh = new Shape();
+  gh.moveTo(-1.95, 0.94);
+  gh.lineTo(1.12, 0.94);
+  gh.lineTo(0.3, 1.42);
+  gh.lineTo(-1.45, 1.44);
+  gh.lineTo(-1.95, 0.94);
+  const glass = new Mesh(build().extrude(gh, 1.66, C.glass).geometry(), ctx.glass);
+  glass.name = 'glass';
+  glass.renderOrder = 2;
+  ctx.add(glass, false);
+
+  ctx.add(
+    build()
+      // flat floor and the subframes; the battery pack is added by the vehicle
+      .box(4.0, 0.06, 1.5, C.darkSteel, { p: [-0.05, 0.3, 0] })
+      .box(0.5, 0.1, 1.1, C.darkSteel, { p: [1.62, 0.32, 0] })
+      .box(0.5, 0.18, 0.5, C.engine, { p: [-1.4, 0.36, 0] })
+      .mesh('underside'),
+  );
+
+  ctx.add(
+    build()
+      .box(0.3, 0.16, 1.4, C.black, { p: [0.9, 0.9, 0] })
+      .torus(0.16, 0.02, C.black, { p: [0.72, 0.99, -0.4], r: [0, Math.PI / 2, 0.35] }, 4, 14)
+      .box(0.25, 0.04, 0.2, 0x2a3540, { p: [0.92, 1.0, 0] })
+      .box(0.48, 0.48, 0.5, C.darkSteel, { p: [0.15, 0.72, -0.4] })
+      .box(0.48, 0.48, 0.5, C.darkSteel, { p: [0.15, 0.72, 0.4] })
+      .box(0.48, 0.44, 1.4, C.darkSteel, { p: [-0.95, 0.72, 0] })
+      .mesh('interior'),
+    false,
+  );
+}

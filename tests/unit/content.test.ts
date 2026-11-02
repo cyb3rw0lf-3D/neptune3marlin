@@ -37,15 +37,9 @@ const runs = LESSONS.filter((l) => l.available).flatMap((lesson) =>
 );
 
 describe('lesson content', () => {
-  it('has all eight lessons, with stage 1 and 2 lessons available', () => {
+  it('has all eight lessons, all available', () => {
     expect(LESSONS).toHaveLength(8);
-    expect(LESSONS.filter((l) => l.available).map((l) => l.id)).toEqual([
-      'oil-change',
-      'tire-service',
-      'brakes',
-      'battery',
-      'inspection',
-    ]);
+    expect(LESSONS.every((l) => l.available)).toBe(true);
   });
 
   it.each(runs.map((r) => [`${r.lesson.id} ${r.vehicle.id} ${r.units} seed ${r.seed}`, r] as const))(
@@ -131,5 +125,35 @@ describe('lesson content', () => {
     const clips = (manifest as { clips: Record<string, string> }).clips;
     const missing = collectLines().filter((line) => !clips[lineKey(line)]);
     expect(missing, 'run scripts/gen-narration.mjs').toEqual([]);
+  });
+});
+
+describe('stage 3 scenarios', () => {
+  const variants = <T>(id: string, vehicle: keyof typeof VEHICLES, n = 200): T[] => {
+    const lesson = LESSONS.find((l) => l.id === id)!;
+    return Array.from({ length: n }, (_, i) => lesson.variant(createRng(i * 7919 + 13), VEHICLES[vehicle]) as T);
+  };
+
+  it('OBD-II picks every fault scenario', () => {
+    const codes = new Set(variants<{ code: string }>('obd2', 'sedan').map((v) => v.code));
+    expect([...codes].sort()).toEqual(['P0128', 'P0171', 'P0301', 'P0455']);
+  });
+
+  it('EV safety sometimes hands out gloves with a pinhole', () => {
+    const holes = new Set(variants<{ pinhole: boolean }>('ev-safety', 'ev').map((v) => v.pinhole));
+    expect([...holes].sort()).toEqual([false, true]);
+  });
+
+  it('an EV jump-start always uses the jump pack', () => {
+    const jumps = new Set(variants<{ jump: string }>('battery', 'ev').map((v) => v.jump));
+    expect([...jumps]).toEqual(['pack']);
+  });
+
+  it('the EV inspection has no engine checks and adds the cabin filter', () => {
+    const lesson = LESSONS.find((l) => l.id === 'inspection')!;
+    const ev = VEHICLES.ev;
+    const ids = lesson.steps(ev, lesson.variant(createRng(1), ev), 'us').map((s) => s.id);
+    expect(ids).toContain('check-cabin-filter');
+    for (const gas of ['check-oil', 'check-belt', 'check-hose', 'check-air-filter']) expect(ids).not.toContain(gas);
   });
 });

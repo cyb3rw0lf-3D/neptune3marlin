@@ -1,4 +1,4 @@
-import { Raycaster, Vector3 } from 'three';
+import { type Object3D, Raycaster, Vector3 } from 'three';
 import type { App } from '../app';
 import { createRng } from '../core/random';
 import { LESSONS, lessonById } from '../lessons/content';
@@ -37,6 +37,7 @@ export function installTestHooks(app: App): void {
         torque: app.session.torqueSetting,
         held: app.interaction.heldBy(pointer()),
         vehicle: app.session.vehicleId,
+        scanPage: app.world.scanTool.page,
         tagOpen: app.markers.tagOpen,
         profiles: app.save.data.profiles.map((p) => p.name),
       };
@@ -62,6 +63,13 @@ export function installTestHooks(app: App): void {
     /** Uses an item (or 'hand') on a target, as if the gesture finished. Returns the verdict kind. */
     act(item: ItemId, target: TargetId, value?: number) {
       const p = pointer();
+      if (target.startsWith('scan-')) {
+        // Scan tool buttons are pressed on its screen, not with a tool.
+        const before = app.session.runner?.result().mistakes.length ?? 0;
+        app.session.scanButton(target as 'scan-read');
+        const after = app.session.runner?.result().mistakes.length ?? 0;
+        return after > before ? 'mistake' : 'done';
+      }
       if (item !== 'hand') app.interaction.grab(p, item);
       else app.interaction.release(p);
       const v = app.session.attempt(item, target);
@@ -108,7 +116,7 @@ export function installTestHooks(app: App): void {
       if (!p) return null;
       return project(p);
     },
-    buttonScreenPos(panel: 'menu' | 'dialog' | 'clipboard' | 'tag', id: string) {
+    buttonScreenPos(panel: 'menu' | 'dialog' | 'clipboard' | 'tag' | 'scan', id: string) {
       const w = api.buttonWorld(panel, id);
       return w ? project(new Vector3(w.x, w.y, w.z)) : null;
     },
@@ -118,7 +126,7 @@ export function installTestHooks(app: App): void {
       return project(entry.collider.getWorldPosition(new Vector3()));
     },
     /** World position of a panel button's center. */
-    buttonWorld(panel: 'menu' | 'dialog' | 'clipboard' | 'tag', id: string) {
+    buttonWorld(panel: 'menu' | 'dialog' | 'clipboard' | 'tag' | 'scan', id: string) {
       const pnl: Panel =
         panel === 'menu'
           ? app.menus.panel
@@ -126,7 +134,9 @@ export function installTestHooks(app: App): void {
             ? app.hud.dialog
             : panel === 'tag'
               ? app.markers.tag
-              : app.hud.clipboard;
+              : panel === 'scan'
+                ? app.world.scanTool.screen
+                : app.hud.clipboard;
       const b = pnl.buttons.find((x) => x.id === id);
       if (!b) return null;
       pnl.mesh.updateMatrixWorld(true);
@@ -260,7 +270,11 @@ export function installTestHooks(app: App): void {
           const eye = sp.position.clone().setY(sp.eye);
           const dir = c.clone().sub(eye).normalize();
           const ray = new Raycaster(eye, dir, 0, eye.distanceTo(c) + 0.2);
-          const hit = ray.intersectObjects(app.registry.occluders, false)[0];
+          const shown = app.registry.occluders.filter((o) => {
+            for (let n: Object3D | null = o; n; n = n.parent) if (!n.visible) return false;
+            return true;
+          });
+          const hit = ray.intersectObjects(shown, false)[0];
           const own = ray.intersectObject(entry.collider, false)[0];
           out[t]!.push(
             `${sp.id}: wall ${hit ? `${hit.object.name}@${hit.distance.toFixed(2)}` : '-'} target ${own ? own.distance.toFixed(2) : 'miss'}`,

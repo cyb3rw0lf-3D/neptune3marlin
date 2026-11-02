@@ -284,14 +284,12 @@ export class Menus {
     const prog = this.save.progress(lesson.id);
 
     p.text('Vehicle', 50, 196, { size: 26, color: UI.muted });
-    // The Wren EV arrives in a later update.
     const vehicles: VehicleId[] = ['sedan', 'pickup', 'ev'];
     vehicles.forEach((v, i) => {
       const supported = lesson.vehicles.includes(v);
-      const built = v !== 'ev';
       p.button(
         `vehicle-${v}`,
-        built ? VEHICLES[v].name : `${VEHICLES[v].name} (soon)`,
+        VEHICLES[v].name,
         50 + i * 400,
         232,
         380,
@@ -300,7 +298,7 @@ export class Menus {
           this.vehicle = v;
           p.redraw();
         },
-        { enabled: supported && built, selected: this.vehicle === v },
+        { enabled: supported, selected: this.vehicle === v },
       );
     });
 

@@ -17,6 +17,7 @@ import type { Markers } from '../ui/markers';
 import { UI } from '../ui/panel';
 import { VEHICLES, type WheelPos } from '../vehicles/specs';
 import { RAISE_HEIGHT } from '../world/lift';
+import type { ScanButton } from '../world/scan-tool';
 import type { World } from '../world/world';
 import type { ConsequencePlayer } from './consequences';
 import { LessonRunner, type Verdict } from './engine/runner';
@@ -84,7 +85,31 @@ export class LessonSession implements InteractionHooks {
   private narrationToken = 0;
   private fillRedraw = 0;
 
-  constructor(private readonly d: SessionDeps) {}
+  constructor(private readonly d: SessionDeps) {
+    d.world.scanTool.onButton = (id) => this.scanButton(id);
+  }
+
+  /** A button pressed on the scan tool's own screen. */
+  scanButton(id: ScanButton): void {
+    const r = this.runner;
+    const tool = this.d.world.scanTool;
+    if (!r || !tool.connected || !this.canAct()) return;
+    const v = r.attempt(HAND, id);
+    let accepted = false;
+    if (v.kind === 'start') {
+      const done = r.complete(id);
+      accepted = done.kind === 'done';
+      this.onVerdict(done, null, HAND);
+    } else if (v.kind === 'mistake') {
+      this.onVerdict(v, null, HAND);
+    }
+    this.d.sfx.play('click');
+    // Browsing screens is always allowed; clearing codes only happens as a step.
+    if (id === 'scan-read') tool.show('codes');
+    else if (id === 'scan-freeze') tool.show('freeze');
+    else if (id === 'scan-live') tool.show('live');
+    else if (accepted) tool.show('cleared');
+  }
 
   get active(): boolean {
     return this.runner !== null;
@@ -286,6 +311,7 @@ export class LessonSession implements InteractionHooks {
       finding + (reading?.note ? ` ${reading.note}` : ''),
       tag.options,
       (i) => this.answer(i),
+      tag.tones,
     );
   }
 
@@ -509,7 +535,7 @@ export class LessonSession implements InteractionHooks {
     });
   }
 
-  onVerdict(v: Verdict, pointer: Pointer, item: ItemId): void {
+  onVerdict(v: Verdict, pointer: Pointer | null, item: ItemId): void {
     if (v.kind === 'mistake') {
       const at = this.anchorPosition(v.step.targets[0]);
       void this.handleMistake(v.mistake, v.record, at).then(() => {
@@ -1002,6 +1028,134 @@ export class LessonSession implements InteractionHooks {
       case 'lights-off':
         v.setLights(false);
         break;
+      // --- engine diagnostics and ignition ---
+      case 'scan-plug':
+        this.d.interaction().consume('scan-tool');
+        w.plugScanTool();
+        sfx.play('click');
+        break;
+      case 'scan-set': {
+        const [page, key] = arg.split('=') as ['codes' | 'freeze' | 'live', string];
+        w.scanTool.pages[page] = key;
+        w.scanTool.draw();
+        break;
+      }
+      case 'scan-clear':
+        w.scanTool.pages.codes = 'codes-cleared';
+        w.scanTool.show('cleared');
+        break;
+      case 'hose-on':
+        this.d.interaction().consume('exhaust-hose');
+        w.placeExhaustHose();
+        sfx.play('clunk');
+        break;
+      case 'coil-out': {
+        const n = Number(arg.split('-').pop()) - 1;
+        const coil = v.coils[n];
+        const home = v.coilHomes[n];
+        if (coil && home) {
+          // Lifted out and laid on the engine beside its well.
+          coil.position.set(home.x - 0.09, home.y + 0.06, home.z);
+          coil.rotation.set(0, 0, Math.PI / 2);
+          const id = n === 0 ? 'coil-c1' : n === 2 ? 'coil-c3' : null;
+          const entry = id ? reg.items.get(id) : undefined;
+          if (entry) {
+            entry.home = { parent: v.root, position: coil.position.clone(), quaternion: coil.quaternion.clone() };
+            entry.collider.userData.enabled = true;
+          }
+        }
+        sfx.play('click');
+        break;
+      }
+      case 'coil-in': {
+        const n = Number(arg.split('-').pop()) - 1;
+        const home = v.coilHomes[n];
+        if (!home) break;
+        if (item === 'coil-c1' || item === 'coil-c3') {
+          place(item, v.root, home.clone(), false);
+          const entry = reg.items.get(item);
+          if (entry) entry.object.rotation.set(0, 0, 0);
+        } else {
+          // A new part: the old coil is swapped out and the new one goes in its place.
+          consume(item);
+          const coil = v.coils[n];
+          if (coil) {
+            coil.position.copy(home);
+            coil.rotation.set(0, 0, 0);
+          }
+        }
+        sfx.play('click');
+        break;
+      }
+      case 'plug-out':
+        reg.setItemAvailable('old-plug', true);
+        reg.rehome('old-plug', w.trayPlug, new Vector3());
+        sfx.play('ratchet');
+        break;
+      case 'spark-in':
+        consume('new-plug');
+        sfx.play('ratchet');
+        break;
+      case 'plugs-rest': {
+        // Valkyrie does the remaining cylinders the same way, fast-forwarded.
+        const others = v.coils.slice(1);
+        void tw.run(1.6, (t) => {
+          others.forEach((c, i) => {
+            const home = v.coilHomes[i + 1];
+            if (!home) return;
+            const phase = Math.max(0, Math.min(1, t * others.length - i));
+            c.position.y = home.y + Math.sin(phase * Math.PI) * 0.1;
+          });
+        });
+        sfx.play('ratchet');
+        break;
+      }
+      case 'part-in':
+        consume(item);
+        sfx.play('click');
+        break;
+      // --- EV high-voltage safety ---
+      case 'barrier':
+        w.showBarrier(arg === 'barrier-rear' ? 1 : 0);
+        sfx.play('clunk');
+        break;
+      case 'gloves-reject':
+        w.gloves.a.position.x = -0.42;
+        w.gloves.a.rotation.y = 0.6;
+        sfx.play('drop');
+        break;
+      case 'gloves-on':
+        (arg === 'gloves-b' ? w.gloves.b : w.gloves.a).visible = false;
+        sfx.play('pickup');
+        break;
+      case 'protectors-on':
+        w.gloves.protectors.visible = false;
+        sfx.play('pickup');
+        break;
+      case 'fob-lockbox':
+        consume('key-fob');
+        sfx.play('clunk');
+        break;
+      case 'sd-out':
+        if (v.serviceDisconnect) v.serviceDisconnect.visible = false;
+        sfx.play('clunk');
+        break;
+      case 'loto':
+        consume('loto-tag');
+        if (v.lockoutTag) v.lockoutTag.visible = true;
+        sfx.play('click');
+        break;
+      case 'wait': {
+        const timer = reg.targets.get('wait-timer');
+        sfx.play('click');
+        if (timer) {
+          void tw.run(1.5, (t) => {
+            if (Math.round(t * 20) % 4 === 0)
+              this.d.markers.showReading(timer.anchor, 'Wait timer', `${Math.round(t * 10)}:00`, 'Fast-forwarded');
+          });
+        }
+        break;
+      }
     }
     void pointer;
   }

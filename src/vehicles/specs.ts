@@ -24,6 +24,10 @@ export interface VehicleSpec {
   };
   /** 12-volt battery: BCI group size and cold cranking amps. */
   battery: { group: string; cca: number; wrongGroup: string };
+  /** Spark plugs (gas engines): gap in inches, torque in ft-lb. */
+  ignition: { cylinders: number; plugGapIn: number; plugTorque: number } | null;
+  /** High-voltage system (EVs only). */
+  hv: { packVolts: number; waitMinutes: number; gloveClass: string } | null;
 }
 
 export const VEHICLES: Record<VehicleId, VehicleSpec> = {
@@ -44,6 +48,8 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
       caliperBoltTorque: 26,
     },
     battery: { group: '35', cca: 640, wrongGroup: '51R' },
+    ignition: { cylinders: 4, plugGapIn: 0.044, plugTorque: 13 },
+    hv: null,
   },
   pickup: {
     id: 'pickup',
@@ -62,6 +68,8 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
       caliperBoltTorque: 30,
     },
     battery: { group: '65', cca: 750, wrongGroup: '35' },
+    ignition: { cylinders: 6, plugGapIn: 0.052, plugTorque: 15 },
+    hv: null,
   },
   ev: {
     id: 'ev',
@@ -80,6 +88,8 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
       caliperBoltTorque: 26,
     },
     battery: { group: 'H5', cca: 550, wrongGroup: '35' },
+    ignition: null,
+    hv: { packVolts: 400, waitMinutes: 10, gloveClass: 'Class 0 (1000 V)' },
   },
 };
 

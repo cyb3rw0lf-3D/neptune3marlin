@@ -70,7 +70,8 @@ export type ConsequenceId =
   | 'pedal-sink'
   | 'fan-spin'
   | 'hot-steam'
-  | 'wheel-spin';
+  | 'wheel-spin'
+  | 'co-alarm';
 
 export interface Measure {
   quantity: Quantity;
@@ -95,6 +96,8 @@ export interface Choice {
   wrong: MistakeDef;
   /** A different mistake for particular wrong options (e.g. missing a fault vs. flagging a good part). */
   wrongByOption?: Record<number, MistakeDef>;
+  /** Tag popups only: icon per option, 0 good (circle), 1 caution (triangle), 2 bad (square). */
+  tones?: (0 | 1 | 2)[];
   /** Spoken after a correct answer. */
   right?: string;
 }
@@ -169,7 +172,25 @@ export type FxName =
   | 'lights-on'
   | 'lights-off'
   | 'engine-off'
-  | 'inspect';
+  | 'inspect'
+  | 'scan-plug'
+  | 'scan-set'
+  | 'scan-clear'
+  | 'hose-on'
+  | 'coil-out'
+  | 'coil-in'
+  | 'plug-out'
+  | 'spark-in'
+  | 'plugs-rest'
+  | 'part-in'
+  | 'barrier'
+  | 'gloves-reject'
+  | 'gloves-on'
+  | 'protectors-on'
+  | 'fob-lockbox'
+  | 'sd-out'
+  | 'loto'
+  | 'wait';
 
 export interface Effect {
   fx: FxName;
@@ -231,6 +252,11 @@ export interface LessonStage {
   drainPan?: boolean;
   /** Visible faults for the inspection lesson. */
   faults?: string[];
+  exhaust?: boolean;
+  /** Scan tool screens for this run (codes, freeze, live, codes-cleared, live-after, ...). */
+  scan?: Record<string, string[]>;
+  trayItem?: string;
+  evKit?: boolean;
 }
 
 export interface LessonDef<V = unknown> {

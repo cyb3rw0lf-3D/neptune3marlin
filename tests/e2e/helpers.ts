@@ -24,6 +24,7 @@ export interface GameState {
   torque: number;
   held: string | null;
   vehicle: string;
+  scanPage: string;
   tagOpen: boolean;
   profiles: string[];
 }

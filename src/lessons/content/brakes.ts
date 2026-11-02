@@ -39,6 +39,20 @@ const JACK_ON_PAN: MistakeDef = {
   consequence: 'oil-leak',
 };
 
+const JACK_ON_PACK: MistakeDef = {
+  code: 'brakes.jack.on_battery_pack',
+  kind: 'safety',
+  label: 'Put the jack under the high-voltage battery pack',
+  explain:
+    'The battery pack is not a lifting point. A jack can crack its case and damage the cells inside, which can start a fire hours later. EVs have marked jack pads: use only those.',
+};
+
+const JACK_POINT: Record<VehicleSpec['id'], string> = {
+  sedan: 'front subframe, behind the oil pan',
+  pickup: 'front differential housing',
+  ev: 'front jack pad on the subframe, never the battery pack',
+};
+
 const JACK_ONLY: MistakeDef = {
   code: 'brakes.jack.no_stands',
   kind: 'safety',
@@ -110,7 +124,7 @@ export const brakes: LessonDef<BrakeVariant> = {
   title: 'Brake Inspection & Pads',
   summary: 'Measure pads and rotors, then replace the front pads safely on jack stands.',
   available: true,
-  vehicles: ['sedan', 'pickup'],
+  vehicles: ['sedan', 'pickup', 'ev'],
   cartItems: [
     'breaker-bar',
     'impact-wrench',
@@ -194,14 +208,14 @@ function brakeSteps(vehicle: VehicleSpec, v: BrakeVariant, units: UnitSystem): S
     {
       id: 'jack-place',
       label: 'Roll the floor jack under the front jacking point',
-      say: `Roll the floor jack under the car and center its saddle on the front jacking point. On this ${vehicle.name} that is the ${vehicle.id === 'pickup' ? 'front differential housing' : 'front subframe, behind the oil pan'}.`,
+      say: `Roll the floor jack under the car and center its saddle on the front jacking point. On this ${vehicle.name} that is the ${JACK_POINT[vehicle.id]}.`,
       hint: 'The jack lifts at one strong point at the front of the car. Not the oil pan.',
       spot: 'jack',
       item: HAND,
       targets: ['jack-point'],
       gesture: { kind: 'press' },
       requires: ['chocks', 'break-lugs'],
-      wrongTargets: { 'oil-pan': JACK_ON_PAN },
+      wrongTargets: vehicle.hv ? { 'hv-pack': JACK_ON_PACK } : { 'oil-pan': JACK_ON_PAN },
       effects: [{ fx: 'jack-place' }],
     },
     {

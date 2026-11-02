@@ -109,8 +109,10 @@ export class Interaction {
     for (const h of hits) {
       const pick = h.object.userData.pick as PickInfo | undefined;
       if (!pick) continue;
-      // Solid things in front of a part block it; menus and dialogs float above everything.
-      if (pick.kind !== 'ui' && h.distance > wall + OCCLUSION_TOLERANCE) continue;
+      // Solid things in front of a part block it; menus and dialogs float above everything,
+      // but a screen that is part of the world (the scan tool) can be hidden like any part.
+      const floating = pick.kind === 'ui' && !h.object.userData.worldUi;
+      if (!floating && h.distance > wall + OCCLUSION_TOLERANCE) continue;
       if (pick.kind === 'item' && (pick.id === heldItem || this.holderOf(pick.id))) continue;
       out.push({
         pick,
