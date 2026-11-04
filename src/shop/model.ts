@@ -5,10 +5,10 @@ export const TIER_AT = [0, 12, 30, 55, 80] as const;
 export const TIER_NAMES = ['New shop', 'Neighborhood shop', 'Trusted shop', 'Diagnostic shop', 'EV-certified shop'];
 /** What each tier opens up, shown on the menu. */
 export const TIER_UNLOCKS = [
-  'Sedan oil changes, tire service and inspections',
-  'Sedan brakes and battery jobs',
-  'Pickup jobs',
-  'Check engine diagnosis and spark plugs',
+  'Sedan wipers and bulbs, oil changes, tire service and inspections',
+  'Sedan brakes, battery and coolant jobs',
+  'Pickup jobs, and alignments (with the alignment rack)',
+  'Check engine diagnosis, spark plugs and A/C',
   'Wren EV jobs',
 ];
 export const MAX_REP = 100;
@@ -34,7 +34,7 @@ export const REP = {
   efficient: 1,
 } as const;
 
-export type UpgradeId = 'impact' | 'digital-torque' | 'pro-scan' | 'analyzer' | 'balancer';
+export type UpgradeId = 'impact' | 'digital-torque' | 'pro-scan' | 'analyzer' | 'balancer' | 'rack';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -74,6 +74,12 @@ export const UPGRADES: UpgradeDef[] = [
     name: 'Wheel balancer',
     price: 1500,
     effect: 'Lets the shop sell, mount and balance new tires when you find worn ones.',
+  },
+  {
+    id: 'rack',
+    name: 'Alignment rack',
+    price: 2200,
+    effect: 'Lets the shop take wheel alignment jobs.',
   },
 ];
 

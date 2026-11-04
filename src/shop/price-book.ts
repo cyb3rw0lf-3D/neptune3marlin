@@ -26,7 +26,11 @@ export type ServiceId =
   | 'spark-plugs'
   | 'hv-disable'
   | 'wiper-blades'
-  | 'tires-pair';
+  | 'tires-pair'
+  | 'refresh'
+  | 'coolant-service'
+  | 'alignment'
+  | 'ac-diagnosis';
 
 export interface ServiceDef {
   id: ServiceId;
@@ -119,6 +123,48 @@ export const SERVICES: Record<ServiceId, ServiceDef> = {
     name: 'High-voltage disable for service',
     hours: { ev: 1.0 },
     blurb: 'Make the high-voltage system safe before a certified tech replaces an HV part.',
+  },
+  refresh: {
+    id: 'refresh',
+    name: 'Wipers, headlight bulb & cabin filter',
+    hours: { sedan: 0.4, pickup: 0.4, ev: 0.4 },
+    parts: {
+      sedan: [
+        ['Wiper blades (2)', 22],
+        ['Headlight bulb', 12],
+        ['Cabin air filter', 16],
+      ],
+      pickup: [
+        ['Wiper blades (2)', 26],
+        ['Headlight bulb', 14],
+        ['Cabin air filter', 18],
+      ],
+      ev: [
+        ['Wiper blades (2)', 24],
+        ['Headlight bulb', 12],
+        ['Cabin air filter', 20],
+      ],
+    },
+    blurb: 'New wiper blades, a headlight bulb and a fresh cabin air filter.',
+  },
+  'coolant-service': {
+    id: 'coolant-service',
+    name: 'Coolant drain, fill & bleed',
+    hours: { sedan: 1.0, pickup: 1.2 },
+    parts: { sedan: [['Long-life coolant, 2 gal', 32]], pickup: [['Long-life coolant, 3 gal', 46]] },
+    blurb: 'Replace worn-out coolant, bleed the air out, and check freeze protection.',
+  },
+  alignment: {
+    id: 'alignment',
+    name: 'Four-wheel alignment',
+    hours: { sedan: 1.0, pickup: 1.2, ev: 1.0 },
+    blurb: 'Measure every angle on the rack and set front toe. Bent parts are quoted separately.',
+  },
+  'ac-diagnosis': {
+    id: 'ac-diagnosis',
+    name: 'A/C performance check',
+    hours: { sedan: 0.8, pickup: 0.8, ev: 0.8 },
+    blurb: 'Gauge readings and vent temperature to find why the A/C is not cooling. Refrigerant work is quoted after.',
   },
   'wiper-blades': {
     id: 'wiper-blades',

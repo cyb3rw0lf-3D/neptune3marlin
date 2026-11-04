@@ -66,6 +66,7 @@ test('a teacher creates a class, a student joins and plays, and the dashboard sh
   await expect.poll(async () => (await call<Link['outbox']>(page, 'syncNow'))?.pending.length).toBe(0);
 
   await teacher.goto(`/dashboard/#k=${cls.key}`);
+  await teacher.getByRole('tab', { name: 'Class grid' }).click();
   const cell = teacher.getByRole('button', { name: /^Sam, Oil & Filter Change: .*test: best \d+%/ });
   await expect(cell).toBeVisible();
   await cell.click();

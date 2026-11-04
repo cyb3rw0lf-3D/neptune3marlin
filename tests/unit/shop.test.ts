@@ -91,10 +91,16 @@ describe('reputation and tiers', () => {
     const t0 = availableJobs(0);
     expect(t0.length).toBeGreaterThan(0);
     expect(t0.every((j) => j.vehicle === 'sedan')).toBe(true);
-    expect(t0.map((j) => j.job.lesson).sort()).toEqual(['inspection', 'oil-change', 'tire-service']);
+    expect(t0.map((j) => j.job.lesson).sort()).toEqual(['inspection', 'oil-change', 'tire-service', 'wipers-bulbs']);
     expect(availableJobs(3).some((j) => j.vehicle === 'ev')).toBe(false);
     expect(availableJobs(4).some((j) => j.vehicle === 'ev')).toBe(true);
     for (const job of JOBS) for (const v of job.vehicles) expect(tierNeeded(job, v)).toBeLessThanOrEqual(4);
+  });
+
+  it('alignment jobs need the alignment rack', () => {
+    expect(availableJobs(4).some((j) => j.job.lesson === 'alignment')).toBe(false);
+    expect(availableJobs(4, ['rack']).some((j) => j.job.lesson === 'alignment')).toBe(true);
+    expect(availableJobs(1, ['rack']).some((j) => j.job.lesson === 'alignment')).toBe(false);
   });
 
   it('every job customer exists', () => {

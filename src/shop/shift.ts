@@ -19,9 +19,12 @@ export interface ShiftJob {
 export const MAX_COMEBACKS_PER_SHIFT = 2;
 
 /** Every job and vehicle the shop's tier allows. */
-export function availableJobs(tier: number): { job: JobTemplate; vehicle: VehicleId }[] {
+export function availableJobs(
+  tier: number,
+  upgrades: readonly string[] = [],
+): { job: JobTemplate; vehicle: VehicleId }[] {
   const out: { job: JobTemplate; vehicle: VehicleId }[] = [];
-  for (const job of JOBS)
+  for (const job of JOBS.filter((j) => !j.needs || upgrades.includes(j.needs)))
     for (const vehicle of job.vehicles) if (tierNeeded(job, vehicle) <= tier) out.push({ job, vehicle });
   return out;
 }
@@ -44,7 +47,7 @@ export function draftShift(shop: ShopSave, seed: number): ShiftJob[] {
     jobs.push({ job, vehicle: p.vehicle, customerId: p.customerId, comeback: p, extra: null, seed: nextSeed(rng) });
   }
 
-  const pool = availableJobs(tier);
+  const pool = availableJobs(tier, shop.upgrades);
   const used = new Set(jobs.map((j) => j.job.id));
   // A new shop only has a few kinds of work, so its shifts are shorter.
   const kinds = new Set(pool.map((p) => p.job.id)).size;

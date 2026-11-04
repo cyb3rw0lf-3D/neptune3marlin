@@ -19,6 +19,10 @@ const PREFIX: Record<string, string> = {
   battery: 'battery.',
   obd2: 'obd.',
   'spark-plugs': 'plugs.',
+  'wipers-bulbs': 'wipers.',
+  'coolant-flush': 'coolant.',
+  alignment: 'alignment.',
+  'ac-check': 'ac.',
 };
 
 /** Every line a customer can speak, with its voice: used to pre-record them. */
