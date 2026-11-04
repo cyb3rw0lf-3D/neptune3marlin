@@ -331,6 +331,11 @@ export class Vehicle {
   }
 
   /** Coils, gas cap, vacuum hose, thermostat housing and tailpipe on gas engines. */
+  /** Tie rods hang just below the floor pan so they can be seen from under the car. */
+  private tieRodY(): number {
+    return Math.min(this.layout.wheelR - 0.05, 0.2);
+  }
+
   /** Small parts for the Stage 6 lessons: A/C ports, tie rods, the radiator petcock and bleeder. */
   private buildServiceParts(): void {
     const L = this.layout;
@@ -340,7 +345,7 @@ export class Vehicle {
       .cyl(0.014, 0.014, 0.03, 8, 0x2f6fd6, {
         p: [at.brakeFluid[0] + 0.1, at.brakeFluid[1] + 0.005, -at.brakeFluid[2]],
       })
-      .cyl(0.014, 0.014, 0.03, 8, C.safetyRed, { p: [at.radiatorCap[0] - 0.12, at.radiatorCap[1] - 0.035, 0.36] })
+      .cyl(0.014, 0.014, 0.03, 8, C.safetyRed, { p: [at.radiatorCap[0] - 0.12, at.radiatorCap[1] + 0.005, 0.22] })
       .cyl(0.008, 0.008, 0.2, 6, C.darkSteel, {
         p: [at.brakeFluid[0] + 0.1, at.brakeFluid[1] - 0.08, -at.brakeFluid[2]],
       })
@@ -351,10 +356,10 @@ export class Vehicle {
     for (const sign of [-1, 1]) {
       const z = sign * (L.trackZ - 0.22);
       b.cyl(0.014, 0.014, 0.42, 6, C.steel, {
-        p: [L.wheelX.front - 0.14, L.wheelR - 0.05, z - sign * 0.12],
+        p: [L.wheelX.front - 0.14, this.tieRodY(), z - sign * 0.12],
         r: [Math.PI / 2, 0, 0],
       }).cyl(0.022, 0.022, 0.025, 6, C.darkSteel, {
-        p: [L.wheelX.front - 0.14, L.wheelR - 0.05, z - sign * 0.1],
+        p: [L.wheelX.front - 0.14, this.tieRodY(), z - sign * 0.1],
         r: [Math.PI / 2, 0, 0],
       });
     }
@@ -633,16 +638,22 @@ export class Vehicle {
     this.anchor('leak-check', at.leakCheck);
     // Stage 6 service points, placed relative to the parts above so every body gets them.
     const hl = at.headlights;
-    this.anchor('headlight-socket', [hl.x - 0.13, hl.y + 0.03, -hl.z]);
-    if (!this.layout.ev) this.anchor('cabin-filter', [at.wipers[0] - 0.08, at.wipers[1] - 0.03, 0.42]);
+    // Inside the engine bay behind the driver headlight, kept clear of the fender.
+    this.anchor('headlight-socket', [
+      Math.min(hl.x - 0.13, at.washer[0]),
+      Math.max(hl.y + 0.03, at.washer[1] - 0.02),
+      -hl.z + 0.04,
+    ]);
+    // Gas cars: the cabin filter sits at the rear of the engine bay, just ahead of the hood hinge.
+    if (!this.layout.ev) this.anchor('cabin-filter', [L.hood.pivot[0] + 0.1, at.wipers[1] - 0.06, 0.45]);
     this.anchor('ac-low-port', [at.brakeFluid[0] + 0.1, at.brakeFluid[1] + 0.02, -at.brakeFluid[2]]);
-    this.anchor('ac-high-port', [at.radiatorCap[0] - 0.12, at.radiatorCap[1] - 0.02, 0.36]);
+    this.anchor('ac-high-port', [at.radiatorCap[0] - 0.12, at.radiatorCap[1] + 0.02, 0.22]);
     this.anchor('center-vent', [at.startButton[0] - 0.04, at.startButton[1] + 0.02, at.startButton[2] + 0.12]);
     this.anchor('steering-wheel', [at.driverSeat[0] + 0.42, at.driverSeat[1] - 0.06, at.driverSeat[2] + 0.42]);
     for (const side of ['FL', 'FR'] as const) {
       const z = (side === 'FL' ? -1 : 1) * (L.trackZ - 0.22);
-      this.anchor(`tie-rod-${side}`, [L.wheelX.front - 0.14, L.wheelR - 0.05, z]);
-      this.anchor(`jam-nut-${side}`, [L.wheelX.front - 0.14, L.wheelR - 0.05, z - Math.sign(z) * 0.1]);
+      this.anchor(`tie-rod-${side}`, [L.wheelX.front - 0.14, this.tieRodY(), z]);
+      this.anchor(`jam-nut-${side}`, [L.wheelX.front - 0.14, this.tieRodY(), z - Math.sign(z) * 0.1]);
     }
     const ice = L.ice;
     if (ice) {
