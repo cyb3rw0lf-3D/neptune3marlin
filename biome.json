@@ -8,6 +8,9 @@
       "!test-results",
       "!playwright-report",
       "!package-lock.json",
+      "!server/node_modules",
+      "!server/.wrangler",
+      "!server/worker-configuration.d.ts",
       "!**/*.md"
     ]
   },
