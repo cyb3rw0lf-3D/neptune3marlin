@@ -16,6 +16,7 @@ import { ConsequencePlayer } from './lessons/consequences';
 import type { LessonDef, Mode, VehicleId } from './lessons/engine/types';
 import { type FinishInfo, LessonSession } from './lessons/session';
 import { CROUCH_EYE, DESKTOP_EYE, Locomotion } from './locomotion/locomotion';
+import { ClassClient } from './net/class-client';
 import { ShopController } from './shop/shop-controller';
 import { type DialogButton, Hud } from './ui/hud';
 import { Markers } from './ui/markers';
@@ -47,6 +48,7 @@ export class App {
   readonly interaction: Interaction;
   readonly session: LessonSession;
   readonly shop: ShopController;
+  readonly classes: ClassClient;
   private paletteApplied = false;
   readonly xrInput: XRInput;
   readonly desktop: DesktopInput;
@@ -92,7 +94,24 @@ export class App {
         this.session.quit();
       },
       startShift: () => this.startShift(),
+      joinClass: null,
+      leaveClass: () => this.classes.leave(),
+      classStatus: () => this.classes.status(this.save.activeProfile),
     });
+    this.classes = new ClassClient(this.save);
+    if (this.classes.enabled) this.menus.actions.joinClass = (req) => this.classes.join(req);
+    this.classes.onChange = () => {
+      if (this.menus.isOpen) this.menus.panel.redraw();
+    };
+    this.classes.heartbeat = () => {
+      if (this.shop.active) return { lesson: 'shop', mode: 'shop', step: this.shop.phase };
+      const r = this.session.runner;
+      return r && this.session.lesson
+        ? { lesson: this.session.lesson.id, mode: this.session.mode, step: r.current?.id ?? 'done' }
+        : { lesson: null, mode: null, step: this.screen };
+    };
+    this.classes.start();
+    void this.classes.sync(true);
     this.menus.panel.mesh.position.set(0, 0.0, -1.3);
     this.hud.addCenterPanel(this.menus.panel.mesh);
     this.menus.close();
@@ -126,9 +145,16 @@ export class App {
       save: this.save,
       session: this.session,
       teleport: (id, instant) => this.teleportTo(id, instant),
-      done: () => this.toMenu('shop'),
+      done: () => {
+        void this.classes.sync(true);
+        this.toMenu('shop');
+      },
     });
-    this.session.onFinish = (info) => (this.shop.active ? this.shop.onJobFinished(info) : this.showReport(info));
+    this.session.onFinish = (info) => {
+      if (this.shop.active) this.shop.onJobFinished(info);
+      else this.showReport(info);
+      void this.classes.sync(true);
+    };
     this.session.onQuit = () => {
       if (this.shop.active) {
         this.shop.abandon();
@@ -288,6 +314,17 @@ export class App {
     this.onRecordsChanged();
   }
 
+  /** Back to the title screen. Shared-headset classes forget their students here. */
+  exitToTitle(): void {
+    if (this.session.active) this.session.quit();
+    this.screen = 'title';
+    this.menus.close();
+    this.onScreenChange('title');
+    void this.classes.endSessions().then((n) => {
+      if (n > 0) this.onRecordsChanged();
+    });
+  }
+
   startShift(seed?: number): void {
     this.menus.close();
     this.paused = false;
@@ -326,6 +363,7 @@ export class App {
   }
 
   private onKey(key: string): void {
+    if (this.menus.isOpen && this.menus.typeKey(key)) return;
     if (key === 'Escape') {
       if (this.paused) this.resume();
       else this.pause();

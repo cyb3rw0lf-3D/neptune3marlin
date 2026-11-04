@@ -1,4 +1,6 @@
 import type { LessonId, Mode, RunResult } from '../lessons/engine/types';
+import { type ClassSettings, defaultClassSettings, type LessonKey, parseSettings } from '../net/protocol';
+import { emptyOutbox, enqueue, type Outbox, sanitizeOutbox } from '../net/sync-queue';
 import { newShop, type ShopSave, sanitizeShop } from '../shop/model';
 import { DEFAULT_SETTINGS, type Settings, sanitizeSettings } from './settings';
 
@@ -32,6 +34,33 @@ export interface Profile {
   runs: RunRecord[];
   /** Shop mode career. Missing on profiles that never opened the shop. */
   shop?: ShopSave;
+  /** The teacher's class this student joined, if any. */
+  class?: ClassLink;
+}
+
+export interface ClassLink {
+  className: string;
+  nickname: string;
+  studentId: string;
+  token: string;
+  settings: ClassSettings;
+  outbox: Outbox;
+  joinedAt: string;
+}
+
+function sanitizeClass(raw: unknown): ClassLink | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Partial<ClassLink>;
+  if (typeof r.token !== 'string' || typeof r.studentId !== 'string') return undefined;
+  return {
+    className: typeof r.className === 'string' ? r.className : 'My class',
+    nickname: typeof r.nickname === 'string' ? r.nickname : '',
+    studentId: r.studentId,
+    token: r.token,
+    settings: parseSettings(r.settings) ?? defaultClassSettings(),
+    outbox: sanitizeOutbox(r.outbox),
+    joinedAt: typeof r.joinedAt === 'string' ? r.joinedAt : new Date().toISOString(),
+  };
 }
 
 export interface SaveData {
@@ -78,7 +107,10 @@ export class SaveStore {
       const parsed = JSON.parse(raw) as Partial<SaveData>;
       if (parsed.version !== 1 || !Array.isArray(parsed.profiles)) return emptySave();
       const profiles = parsed.profiles.filter(isProfile);
-      for (const p of profiles) if (p.shop !== undefined) p.shop = sanitizeShop(p.shop);
+      for (const p of profiles) {
+        if (p.shop !== undefined) p.shop = sanitizeShop(p.shop);
+        if (p.class !== undefined) p.class = sanitizeClass(p.class);
+      }
       const active = profiles.some((p) => p.id === parsed.activeProfileId) ? (parsed.activeProfileId ?? null) : null;
       return { version: 1, profiles, activeProfileId: active, settings: sanitizeSettings(parsed.settings) };
     } catch {
@@ -167,8 +199,45 @@ export class SaveStore {
       }
     }
     profile.lessons[run.lessonId] = p;
+    // A student in a class uploads every finished run (see ClassClient).
+    if (profile.class) {
+      enqueue(profile.class.outbox, {
+        id: record.id,
+        lesson: run.lessonId as LessonKey,
+        mode: run.mode,
+        vehicle: run.vehicleName.slice(0, 40),
+        score: Math.round(run.score),
+        passed: run.passed,
+        completed: run.completed,
+        critical: run.criticalCount,
+        hints: run.hints,
+        seconds: Math.max(0, Math.min(86400, Math.round(run.durationSec))),
+        mistakes: run.mistakes.slice(0, 40).map((m) => ({
+          code: m.code,
+          label: m.label.slice(0, 160),
+          count: Math.max(1, Math.min(999, m.count)),
+          critical: m.critical,
+        })),
+        at: Date.parse(record.date),
+      });
+    }
     this.persist();
     return record;
+  }
+
+  /** Links the active profile to a class (after a successful join). */
+  linkClass(link: Omit<ClassLink, 'outbox' | 'joinedAt'>): void {
+    const profile = this.activeProfile;
+    if (!profile) return;
+    profile.class = { ...link, outbox: profile.class?.outbox ?? emptyOutbox(), joinedAt: new Date().toISOString() };
+    this.persist();
+  }
+
+  unlinkClass(): void {
+    const profile = this.activeProfile;
+    if (!profile) return;
+    delete profile.class;
+    this.persist();
   }
 }
 

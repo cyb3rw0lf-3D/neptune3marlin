@@ -249,3 +249,22 @@ test('asks a customer a question and writes up the job with a controller ray', a
   await pullTrigger(page);
   await expect.poll(async () => (await state(page)).dialogButtons).toContain('shop-svc-back');
 });
+
+test('joins a class by typing the code on the in-world keyboard with a controller ray', async ({ page }) => {
+  test.setTimeout(180_000);
+  const created = await page.request.post('http://127.0.0.1:8787/classes', { data: { name: 'VR class' } });
+  const { code } = (await created.json()) as { code: string };
+  await enterVR(page);
+  await call(page, 'createProfile', 'Vee');
+  await call(page, 'clickMenu', 'class');
+  await expect.poll(async () => (await state(page)).menu).toBe('join');
+  for (const ch of code) {
+    await aimAt(page, await call(page, 'buttonWorld', 'menu', `jkey-${ch}`));
+    await pullTrigger(page);
+  }
+  await aimAt(page, await call(page, 'buttonWorld', 'menu', 'join-submit'));
+  await pullTrigger(page);
+  await expect
+    .poll(async () => ((await call(page, 'classLink')) as { className: string } | null)?.className)
+    .toBe('VR class');
+});
