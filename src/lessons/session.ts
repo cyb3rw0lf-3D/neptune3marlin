@@ -1178,6 +1178,10 @@ export class LessonSession implements InteractionHooks {
         consume(item);
         sfx.play('click');
         break;
+      case 'align-read':
+        w.showAlign(arg === 'after' ? 'after' : 'before');
+        sfx.play('click');
+        break;
       // --- EV high-voltage safety ---
       case 'barrier':
         w.showBarrier(arg === 'barrier-rear' ? 1 : 0);
