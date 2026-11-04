@@ -43,6 +43,7 @@ test('every new lesson plays perfectly on every vehicle, with every part reachab
     const res = await call<AutoplayResult>(page, 'autoplay', true);
     expect(res.unreachable, `${lesson} on ${vehicle}`).toEqual([]);
     expect(res.result, `${lesson} on ${vehicle}`).toMatchObject({ completed: true, score: 100, passed: true });
+    await expect.poll(async () => (await state(page)).dialogButtons).toContain('report-menu');
   }
 });
 
@@ -77,6 +78,9 @@ test('the alignment console shows the readings, measured with a real mouse click
   await begin(page, 'alignment', 'learn', 'sedan', 2);
   await call(page, 'autoplay', false, 'read');
   await call(page, 'teleport', 'align');
+  // Put the wheel targets down (Q), as a player would, since MEASURE is pressed by hand.
+  await page.keyboard.press('q');
+  expect((await state(page)).held).toBeNull();
   await page.waitForTimeout(400);
   const pos = await call<{ x: number; y: number; inView: boolean }>(page, 'screenPos', 'align-console');
   expect(pos.inView).toBe(true);
@@ -92,8 +96,10 @@ test('the dashboard Overview and summary row add up for a class', async ({ page,
   const created = await page.request.post(`${api}/classes`, { data: { name: 'Overview class' } });
   const cls = (await created.json()) as { code: string; teacherKey: string };
   const now = Date.now();
+  // Run ids are unique across the whole database, which outlives a test run.
+  const tag = now.toString(36);
   const run = (id: string, lesson: string, mode: string, score: number, passed: boolean) => ({
-    id,
+    id: `${id}-${tag}`,
     lesson,
     mode,
     vehicle: 'Aster S4',
