@@ -70,11 +70,11 @@ test('a teacher creates a class, a student joins and plays, and the dashboard sh
   await expect(cell).toBeVisible();
   await cell.click();
   await expect(teacher.getByRole('dialog')).toContainText('Sam · Oil & Filter Change');
-  await expect(teacher.getByRole('dialog')).toContainText(/torque/i);
+  await expect(teacher.getByRole('dialog')).toContainText(/drain plug/i);
   await teacher.keyboard.press('Escape');
 
   await teacher.getByRole('tab', { name: 'Common mistakes' }).click();
-  await expect(teacher.locator('table.chart tbody tr').first()).toContainText(/torque/i);
+  await expect(teacher.locator('table.chart tbody tr').first()).toContainText(/drain plug/i);
   await expect(teacher.locator('.bar').first()).toBeVisible();
 
   // Exports: the grade CSV, every run, and the certificates zip.
