@@ -24,7 +24,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The class API address (a repository variable set after the API's first deploy).
+      # Without it the game and dashboard still work; class features stay hidden.
       - run: npm run build
+        env:
+          VITE_API_URL: ${{ vars.API_URL }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

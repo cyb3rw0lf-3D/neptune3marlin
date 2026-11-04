@@ -22,6 +22,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
       - run: npm ci
       - name: Lint
         run: npm run lint
@@ -29,9 +32,15 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: Install the class API's dependencies
+        run: npm ci --prefix server
+      - name: Class API type-check
+        run: npm --prefix server run typecheck
+      - name: Class API tests (Workers runtime + local D1)
+        run: npm --prefix server test
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium
-      - name: End-to-end tests (flat screen and emulated Quest 3)
+      - name: End-to-end tests (flat screen, emulated Quest 3, and the class API on local D1)
         run: npm run e2e
       - uses: actions/upload-artifact@v4
         if: failure()

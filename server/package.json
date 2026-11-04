@@ -8,7 +8,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
-    "deploy": "wrangler d1 migrations apply service-bay-vr --remote && wrangler deploy"
+    "deploy": "wrangler d1 migrations apply service-bay-vr --remote && wrangler deploy",
+    "dev:e2e": "wrangler d1 migrations apply service-bay-vr --local && wrangler dev --port 8787 --ip 127.0.0.1 --var RATE_LIMIT_SCALE:1000"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.4.7",

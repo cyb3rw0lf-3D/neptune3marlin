@@ -14,10 +14,20 @@ export default defineConfig({
     launchOptions: { args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] },
     screenshot: 'only-on-failure',
   },
-  webServer: {
-    command: 'npm run build && npx vite preview --port 4173 --strictPort',
-    url: 'http://localhost:4173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      // The class API (Cloudflare Worker + local D1) for the Stage 5 tests.
+      command: 'npm --prefix server run dev:e2e',
+      url: 'http://127.0.0.1:8787/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 180_000,
+    },
+    {
+      command: 'npm run build && npx vite preview --port 4173 --strictPort',
+      url: 'http://localhost:4173',
+      env: { VITE_API_URL: 'http://127.0.0.1:8787' },
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 });

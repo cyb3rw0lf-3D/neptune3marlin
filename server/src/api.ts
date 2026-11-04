@@ -124,7 +124,8 @@ async function rateLimit(request: Request, env: Env, bucket: string, limit: numb
   )
     .bind(key, window)
     .first<{ count: number }>();
-  if ((row?.count ?? 0) > limit) throw new HttpError(429, 'too many requests, try again later');
+  const scale = Math.max(1, Number(env.RATE_LIMIT_SCALE) || 1);
+  if ((row?.count ?? 0) > limit * scale) throw new HttpError(429, 'too many requests, try again later');
 }
 
 // --- auth ---

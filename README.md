@@ -45,8 +45,6 @@ Each lesson runs on every vehicle it suits. Gas-engine lessons skip the EV, the 
 
 Whenever an engine runs indoors in the diagnostics and spark plug lessons, the shop's exhaust extraction hose goes on the tailpipe first; skipping it is a safety error.
 
-A later stage adds an online **teacher dashboard**.
-
 ## Shop mode
 
 Shop mode turns the lessons into a career at your own repair shop. A shift has 3 to 5 customers:
@@ -60,6 +58,41 @@ Shop mode turns the lessons into a career at your own repair shop. A shift has 3
 The end-of-shift **day sheet** totals income, parts, hints, tips and reputation. Reputation unlocks new work in tiers: sedan basics first, then brakes and battery, the pickup, diagnostics and spark plugs, and finally the Wren EV. Money buys upgrades that change the work: a cordless impact wrench, a digital torque wrench (shows IN SPEC), a pro scan tool (repair tips for each code), a digital battery analyzer (state of health) and a wheel balancer (lets the shop sell tires).
 
 > Specs in the game are typical example values for fictional vehicles. Real service work always follows the manufacturer's service information.
+
+## Teacher dashboard
+
+Teachers get a web dashboard at **`/dashboard/`** on the same site (for example `https://cyb3rw0lf-3d.github.io/neptune3marlin/dashboard/`). There are no accounts and no passwords:
+
+1. **Create a class** on the dashboard. You get a 6-character **class code** for students and a **private teacher link**. Bookmark the link: it is the only way into the class.
+2. **Students join** from the game's main menu (**Join a class**) with the class code and a nickname. For a locked-down class, add a **roster** and turn on *Roster only*: each student then gets a personal 8-character code.
+3. Every finished run uploads by itself. Results played offline wait on the device and upload when the network is back.
+
+The dashboard shows:
+- a **class grid** (students by lessons, with Learn, best Practice and best Test, and each student's runs and mistakes);
+- the **most common mistakes** across the class, with safety errors flagged;
+- who is **playing now**;
+- **Shop mode** results.
+
+**Settings** open or lock lessons, require Learn before Test, turn Shop mode on, off or "after passing a Test", and choose how shared headsets work: keep each student on the device, or **sign in every session** so the headset forgets the student when they exit. **Exports**: a grade summary CSV, every run as CSV, Shop mode CSV, and a zip of certificate PNGs.
+
+**Privacy:**
+- The server stores only class names, student nicknames and game results.
+- Teacher keys and student tokens are stored only as SHA-256 hashes.
+- Roster codes are shown only to the teacher.
+- Deleting a class removes everything in it right away, and classes with no activity for a year are deleted automatically.
+
+### Setting up the class server (Cloudflare, free plan)
+
+The dashboard needs a small API: a Cloudflare Worker with a D1 database, in [`server/`](server). Until it is set up, the game and dashboard work as before and class features stay hidden.
+
+1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com) (the free plan is plenty for a school).
+2. Create an API token: **My Profile → API Tokens → Create Token → Edit Cloudflare Workers** template, then **add** the permission **Account → D1 → Edit**. Copy the token.
+3. Find your **Account ID** on the right side of the Workers & Pages overview page.
+4. In this GitHub repository: **Settings → Secrets and variables → Actions → New repository secret**. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+5. Run the **Deploy the class API** workflow (**Actions** tab, or push to `main`). It creates the database, applies the migrations and deploys the Worker. The log shows its address, like `https://service-bay-vr-api.<your-subdomain>.workers.dev`.
+6. Add that address as a repository **variable** (same page, **Variables** tab) named `API_URL`, then re-run **Deploy to GitHub Pages**.
+
+If the game is hosted somewhere other than `https://cyb3rw0lf-3d.github.io`, add that origin to `ALLOWED_ORIGINS` in [`server/wrangler.jsonc`](server/wrangler.jsonc).
 
 ## Controls
 
@@ -96,6 +129,15 @@ npm run e2e        # Playwright end-to-end tests (flat screen + emulated Quest 3
 npm run build      # production build in dist/
 ```
 
+The class API has its own package in `server/`:
+
+```bash
+npm ci --prefix server
+npm --prefix server test          # Workers-runtime tests against a local D1 database
+npm --prefix server run dev:e2e   # the API on http://127.0.0.1:8787 with a local database
+VITE_API_URL=http://127.0.0.1:8787 npm run dev   # the game and dashboard, talking to it
+```
+
 To test VR on a headset during development, the page must be served over HTTPS (for example, through a tunnel). Otherwise use the deployed Pages site.
 
 ### Project layout
@@ -107,6 +149,8 @@ src/
                 session (runs a lesson in the world), consequences (mistake replays)
   shop/         Shop mode: price book, jobs, customers, pay and reputation, shifts, comebacks
                 (all pure and unit-tested), plus the controller that runs a shift
+  net/          class API contract (shared with the server), join and sync client, offline outbox,
+                class locks
   world/        garage, two-post lift, tool cart, floor jack and stands, jump pack, scan tool,
                 exhaust reel, EV safety kit, service counter and customers, low-poly helpers
   vehicles/     shared vehicle model, sedan, pickup and EV bodies, part layouts, example specs
@@ -117,7 +161,10 @@ src/
   ui/           in-world panels: menus, clipboard, captions, dialogs, records
 tests/unit      Vitest: lesson engine, scoring, units, saves, gestures, content validation, Shop economy
 tests/e2e       Playwright: every lesson on every vehicle (with a check that every part can be
-                reached from a work spot), Shop shifts, real mouse input, VR emulation, render budget
+                reached from a work spot), Shop shifts, class join and sync against a local API,
+                the dashboard, real mouse input, VR emulation, render budget
+dashboard/      the teacher dashboard page (second Vite entry)
+server/         the class API: Cloudflare Worker, D1 migrations, Workers-runtime tests
 scripts/        narration generator
 audio-src/      single narration clips (the game loads packs built from them)
 ```
