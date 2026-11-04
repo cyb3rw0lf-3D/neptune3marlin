@@ -10,7 +10,9 @@ import {
 } from 'three';
 import type { Palette } from '../core/settings';
 
-export const FONT = '"Atkinson Hyperlegible", "Segoe UI", Roboto, Arial, sans-serif';
+import { FONT } from './font';
+
+export { FONT };
 
 /** UI colors (canvas CSS strings). Blue/orange pair stays readable for color-blind players. */
 export const UI: Record<keyof typeof STANDARD, string> = {

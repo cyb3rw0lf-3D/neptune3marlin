@@ -14,6 +14,18 @@ export const LESSON_KEYS = [
   'ev-safety',
 ] as const;
 export type LessonKey = (typeof LESSON_KEYS)[number];
+
+/** Lesson titles for the dashboard (kept in step with the lesson files by a unit test). */
+export const LESSON_TITLES: Record<LessonKey, string> = {
+  'oil-change': 'Oil & Filter Change',
+  'tire-service': 'Tire Service',
+  brakes: 'Brake Inspection & Pads',
+  battery: 'Battery & Jump-Start',
+  inspection: 'Multi-Point Inspection',
+  obd2: 'OBD-II Diagnostics',
+  'spark-plugs': 'Spark Plugs & Ignition',
+  'ev-safety': 'EV High-Voltage Safety',
+};
 export const MODES = ['learn', 'practice', 'test'] as const;
 export type ModeKey = (typeof MODES)[number];
 export const VEHICLE_KEYS = ['sedan', 'pickup', 'ev'] as const;

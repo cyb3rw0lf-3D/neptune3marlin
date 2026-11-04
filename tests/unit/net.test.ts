@@ -7,6 +7,8 @@ import {
   cleanName,
   defaultClassSettings,
   LESSON_KEYS,
+  LESSON_TITLES,
+  type LessonKey,
   normalizeCode,
   parseSettings,
   parseSync,
@@ -45,8 +47,9 @@ function memoryStore() {
 }
 
 describe('protocol', () => {
-  it('lists exactly the game lessons', () => {
+  it('lists exactly the game lessons, with their titles', () => {
     expect([...LESSON_KEYS].sort()).toEqual(LESSONS.map((l) => l.id).sort());
+    for (const l of LESSONS) expect(LESSON_TITLES[l.id as LessonKey]).toBe(l.title);
   });
 
   it('validates sync uploads', () => {

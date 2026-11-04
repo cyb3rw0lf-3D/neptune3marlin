@@ -4,7 +4,7 @@ import { LESSONS } from '../lessons/content';
 import type { LessonDef, Mode, VehicleId } from '../lessons/engine/types';
 import type { JoinResult } from '../net/class-client';
 import { lessonLock, modeLock, shopLock } from '../net/gating';
-import type { JoinRequest, LessonKey } from '../net/protocol';
+import { CODE_ALPHABET, type JoinRequest, type LessonKey } from '../net/protocol';
 import { MAX_REP, TIER_AT, TIER_NAMES, TIER_UNLOCKS, tierFor, UPGRADES } from '../shop/model';
 import { money } from '../shop/price-book';
 import { VEHICLES } from '../vehicles/specs';
@@ -672,7 +672,8 @@ export class Menus {
     else if (key === 'Enter') void this.submitJoin();
     else if (key === 'Tab')
       this.joinField = this.joinField === 'code' ? 'nick' : this.joinMode === 'roster' ? 'roster' : 'code';
-    else if (/^[a-zA-Z0-9 ]$/.test(key)) this.joinType(key);
+    else if (/^[a-zA-Z0-9 ]$/.test(key) && (this.joinField === 'nick' || CODE_ALPHABET.includes(key.toUpperCase())))
+      this.joinType(key);
     else return false;
     this.panel.redraw();
     return true;
@@ -806,7 +807,8 @@ export class Menus {
             this.joinType(k);
             p.redraw();
           },
-          { size: 34 },
+          // Codes never use I, L or O (they look like 1 and 0).
+          { size: 34, enabled: this.joinField === 'nick' || CODE_ALPHABET.includes(k) },
         );
       });
     });

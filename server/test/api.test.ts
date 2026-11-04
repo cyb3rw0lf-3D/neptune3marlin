@@ -13,8 +13,9 @@ import type {
   SyncResponse,
 } from '../../src/net/protocol';
 import { defaultClassSettings } from '../../src/net/protocol';
+import { cleanup, IDLE_LIMIT } from '../src/api';
 import { csvCell } from '../src/http';
-import worker, { cleanup, IDLE_LIMIT } from '../src/index';
+import worker from '../src/index';
 
 const ORIGIN = 'https://cyb3rw0lf-3d.github.io';
 let ip = 0;

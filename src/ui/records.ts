@@ -1,5 +1,5 @@
 import type { Profile, RunRecord } from '../core/save';
-import { FONT } from './panel';
+import { FONT } from './font';
 
 const MODE_NAME = { learn: 'Learn', practice: 'Practice', test: 'Test' } as const;
 

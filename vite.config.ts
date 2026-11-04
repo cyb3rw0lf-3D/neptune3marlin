@@ -6,6 +6,10 @@ export default defineConfig({
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      // The game, plus the teacher dashboard at /dashboard/.
+      input: { main: 'index.html', dashboard: 'dashboard/index.html' },
+    },
   },
   server: {
     host: true,
