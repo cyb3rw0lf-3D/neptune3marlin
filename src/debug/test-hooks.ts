@@ -69,6 +69,23 @@ export function installTestHooks(app: App): void {
       sj.comeback = null;
       return true;
     },
+    /** Fills in and submits the in-world "Join a class" form. Resolves with the menu's status line. */
+    async joinClass(fields: { code?: string; nickname?: string; rosterCode?: string }) {
+      app.menus.openJoin();
+      app.menus.fillJoin(fields);
+      await app.menus.submitJoin();
+      return app.classes.status(app.save.activeProfile);
+    },
+    async syncNow() {
+      await app.classes.sync(true);
+      return app.save.activeProfile?.class?.outbox ?? null;
+    },
+    classLink() {
+      return app.save.activeProfile?.class ?? null;
+    },
+    exitToTitle() {
+      app.exitToTitle();
+    },
     uiColors() {
       return { ...UI };
     },

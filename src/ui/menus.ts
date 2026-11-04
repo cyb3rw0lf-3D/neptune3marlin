@@ -2,6 +2,9 @@ import type { LessonProgress, SaveStore } from '../core/save';
 import type { Settings } from '../core/settings';
 import { LESSONS } from '../lessons/content';
 import type { LessonDef, Mode, VehicleId } from '../lessons/engine/types';
+import type { JoinResult } from '../net/class-client';
+import { lessonLock, modeLock, shopLock } from '../net/gating';
+import type { JoinRequest, LessonKey } from '../net/protocol';
 import { MAX_REP, TIER_AT, TIER_NAMES, TIER_UNLOCKS, tierFor, UPGRADES } from '../shop/model';
 import { money } from '../shop/price-book';
 import { VEHICLES } from '../vehicles/specs';
@@ -17,7 +20,8 @@ export type Screen =
   | 'pause'
   | 'shop'
   | 'upgrades'
-  | 'days';
+  | 'days'
+  | 'join';
 
 export interface MenuActions {
   startLesson(lesson: LessonDef, mode: Mode, vehicle: VehicleId): void;
@@ -27,6 +31,10 @@ export interface MenuActions {
   restart(): void;
   quitLesson(): void;
   startShift(): void;
+  /** Null when this copy of the game has no class server. */
+  joinClass: ((req: JoinRequest) => Promise<JoinResult>) | null;
+  leaveClass(): void;
+  classStatus(): string | null;
 }
 
 const KEYS = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'];
@@ -43,7 +51,7 @@ export class Menus {
 
   constructor(
     private readonly save: SaveStore,
-    private readonly actions: MenuActions,
+    readonly actions: MenuActions,
   ) {
     this.panel.setDraw((p) => this.draw(p));
   }
@@ -108,6 +116,9 @@ export class Menus {
         break;
       case 'days':
         this.drawDays(p);
+        break;
+      case 'join':
+        this.drawJoin(p);
         break;
     }
   }
@@ -230,15 +241,17 @@ export class Menus {
     this.header(
       p,
       `Hi, ${prof?.name ?? 'technician'}!`,
-      'Training: pick a lesson. Each one has Learn, Practice and Test runs.',
+      this.actions.classStatus() ?? 'Training: pick a lesson. Each one has Learn, Practice and Test runs.',
     );
+    const settings = prof?.class?.settings ?? null;
     LESSONS.forEach((lesson, i) => {
       const col = i % 2;
       const row = Math.floor(i / 2);
       const x = 50 + col * 610;
       const y = 160 + row * 128;
       const prog = this.save.progress(lesson.id);
-      const label = lesson.available ? lesson.title : `${lesson.title} (soon)`;
+      const locked = lessonLock(settings, lesson.id as LessonKey);
+      const label = lesson.available ? (locked ? `🔒 ${lesson.title}` : lesson.title) : `${lesson.title} (soon)`;
       p.button(
         `lesson-${lesson.id}`,
         '',
@@ -251,15 +264,17 @@ export class Menus {
           this.vehicle = lesson.vehicles.find((v) => v === 'sedan') ?? (lesson.vehicles[0] as VehicleId);
           this.go('lesson');
         },
-        { enabled: lesson.available },
+        { enabled: lesson.available && !locked },
       );
       p.text(label, x + 24, y + 14, {
         size: 32,
         bold: true,
-        color: lesson.available ? UI.text : UI.disabled,
+        color: lesson.available && !locked ? UI.text : UI.disabled,
         maxWidth: 540,
       });
-      if (lesson.available) {
+      if (locked) {
+        p.text('Locked by your teacher', x + 24, y + 66, { size: 24, color: UI.disabled });
+      } else if (lesson.available) {
         this.badge(p, x + 24, y + 62, 'LEARN', prog.learned ? 'done' : 'none');
         this.badge(
           p,
@@ -280,8 +295,16 @@ export class Menus {
       }
     });
     const by = p.heightPx - 104;
-    p.button('switch', 'Switch student', 50, by, 330, 76, () => this.go('profiles'));
-    p.button('shop', 'Shop mode', 400, by, 380, 76, () => this.go('shop'), { variant: 'good' });
+    const passedAny = LESSONS.some((l) => this.save.progress(l.id).passed);
+    const shopBlocked = shopLock(settings, passedAny);
+    p.button('switch', 'Switch student', 50, by, 300, 76, () => this.go('profiles'));
+    p.button('shop', shopBlocked ? '🔒 Shop mode' : 'Shop mode', 370, by, 290, 76, () => this.go('shop'), {
+      variant: shopBlocked ? 'normal' : 'good',
+      enabled: !shopBlocked,
+    });
+    if (this.actions.joinClass) {
+      p.button('class', prof?.class ? 'My class' : 'Join a class', 680, by, 270, 76, () => this.openJoin());
+    }
     p.button('settings', 'Settings', p.widthPx - 330, by, 280, 76, () => {
       this.returnTo = 'home';
       this.go('settings');
@@ -332,7 +355,8 @@ export class Menus {
       ['practice', 'Practice', 'Do it yourself. Ask for hints when stuck.'],
       ['test', 'Test', 'From memory, on a random vehicle. 80% and no safety errors.'],
     ];
-    modes.forEach(([mode, title, desc], i) => {
+    modes.forEach(([mode, title, baseDesc], i) => {
+      let desc = baseDesc;
       const y = 330 + i * 116;
       p.button(
         `mode-${mode}`,
@@ -344,8 +368,11 @@ export class Menus {
         () => this.actions.startLesson(lesson, mode, this.vehicle),
         {
           variant: i === 0 && !prog.learned ? 'primary' : 'normal',
+          enabled: !modeLock(this.save.activeProfile?.class?.settings ?? null, mode, prog),
         },
       );
+      const blocked = modeLock(this.save.activeProfile?.class?.settings ?? null, mode, prog);
+      if (blocked) desc = blocked;
       p.text(title, 80, y + 14, { size: 36, bold: true });
       p.text(desc, 80, y + 58, { size: 24, color: i === 0 && !prog.learned ? '#e6f2ff' : UI.muted, maxWidth: 760 });
       p.text(this.modeState(prog, mode), p.widthPx - 80, y + 32, {
@@ -611,5 +638,208 @@ export class Menus {
         );
       });
     p.button('days-back', 'Back', p.widthPx - 300, p.heightPx - 104, 250, 76, () => this.go('shop'));
+  }
+
+  // --- joining a class ---
+
+  private joinMode: 'code' | 'roster' = 'code';
+  private joinField: 'code' | 'nick' | 'roster' = 'code';
+  private joinCode = '';
+  private joinNick = '';
+  private joinRoster = '';
+  private joinStatus = '';
+  private joinBusy = false;
+
+  openJoin(): void {
+    this.joinStatus = '';
+    this.joinNick = this.joinNick || (this.save.activeProfile?.name ?? '');
+    this.joinField = this.joinMode === 'roster' ? 'roster' : 'code';
+    this.go('join');
+  }
+
+  /** Physical keyboard typing on the join and name screens (desktop play). */
+  typeKey(key: string): boolean {
+    if (this.screen === 'keyboard') {
+      if (key === 'Backspace') this.name = this.name.slice(0, -1);
+      else if (key === 'Enter') this.finishName();
+      else if (/^[a-zA-Z ]$/.test(key)) this.type(key.toUpperCase());
+      else return false;
+      this.panel.redraw();
+      return true;
+    }
+    if (this.screen !== 'join') return false;
+    if (key === 'Backspace') this.joinBackspace();
+    else if (key === 'Enter') void this.submitJoin();
+    else if (key === 'Tab')
+      this.joinField = this.joinField === 'code' ? 'nick' : this.joinMode === 'roster' ? 'roster' : 'code';
+    else if (/^[a-zA-Z0-9 ]$/.test(key)) this.joinType(key);
+    else return false;
+    this.panel.redraw();
+    return true;
+  }
+
+  private joinType(k: string): void {
+    if (this.joinField === 'nick') {
+      if (this.joinNick.length < 24) this.joinNick += this.joinNick.length === 0 ? k.toUpperCase() : k.toLowerCase();
+    } else if (k !== ' ') {
+      const up = k.toUpperCase();
+      if (this.joinField === 'code' && this.joinCode.length < 8) this.joinCode += up;
+      if (this.joinField === 'roster' && this.joinRoster.length < 10) this.joinRoster += up;
+    }
+  }
+
+  private joinBackspace(): void {
+    if (this.joinField === 'nick') this.joinNick = this.joinNick.slice(0, -1);
+    else if (this.joinField === 'code') this.joinCode = this.joinCode.slice(0, -1);
+    else this.joinRoster = this.joinRoster.slice(0, -1);
+  }
+
+  /** Test hook and desktop shortcut: fills the join form in one go. */
+  fillJoin(fields: { code?: string; nickname?: string; rosterCode?: string }): void {
+    if (fields.rosterCode !== undefined) {
+      this.joinMode = 'roster';
+      this.joinRoster = fields.rosterCode.toUpperCase();
+    } else {
+      this.joinMode = 'code';
+      this.joinCode = (fields.code ?? '').toUpperCase();
+      this.joinNick = fields.nickname ?? '';
+    }
+    this.panel.redraw();
+  }
+
+  async submitJoin(): Promise<void> {
+    const join = this.actions.joinClass;
+    if (!join || this.joinBusy) return;
+    const req =
+      this.joinMode === 'roster'
+        ? { rosterCode: this.joinRoster }
+        : { code: this.joinCode, nickname: this.joinNick.trim() };
+    this.joinBusy = true;
+    this.joinStatus = 'Joining…';
+    this.panel.redraw();
+    const res = await join(req);
+    this.joinBusy = false;
+    this.joinStatus = res.ok ? `Joined ${res.className}!` : res.error;
+    if (res.ok) this.go('home');
+    else this.panel.redraw();
+  }
+
+  private drawJoin(p: Panel): void {
+    const link = this.save.activeProfile?.class;
+    if (link) {
+      this.header(p, 'My class', this.actions.classStatus() ?? '');
+      p.paragraph(
+        `You are in ${link.className} as ${link.nickname}. Your finished runs upload to your teacher automatically, even if you play offline for a while.`,
+        50,
+        170,
+        p.widthPx - 100,
+        { size: 30, maxLines: 4 },
+      );
+      if (link.settings.signIn === 'session')
+        p.paragraph(
+          'This class signs in every session: when you exit, your results upload and this headset forgets you.',
+          50,
+          330,
+          p.widthPx - 100,
+          { size: 26, color: UI.warn, maxLines: 3 },
+        );
+      const by = p.heightPx - 104;
+      p.button(
+        'leave-class',
+        'Leave this class',
+        50,
+        by,
+        380,
+        76,
+        () => {
+          this.actions.leaveClass();
+          this.openJoin();
+        },
+        { variant: 'danger' },
+      );
+      p.button('join-back', 'Back', p.widthPx - 330, by, 280, 76, () => this.go('home'), { variant: 'primary' });
+      return;
+    }
+    this.header(
+      p,
+      'Join a class',
+      this.joinMode === 'code'
+        ? 'Type the class code from your teacher and your first name or nickname.'
+        : 'Type the personal roster code your teacher gave you.',
+    );
+    const field = (id: 'code' | 'nick' | 'roster', label: string, value: string, y: number) => {
+      p.text(label, 50, y + 20, { size: 26, color: UI.muted });
+      p.button(
+        `join-field-${id}`,
+        '',
+        300,
+        y,
+        p.widthPx - 350,
+        66,
+        () => {
+          this.joinField = id;
+          p.redraw();
+        },
+        { selected: this.joinField === id },
+      );
+      p.text(`${value}${this.joinField === id ? '|' : ''}`, 324, y + 12, { size: 36, bold: true });
+    };
+    if (this.joinMode === 'code') {
+      field('code', 'Class code', this.joinCode, 136);
+      field('nick', 'Nickname', this.joinNick, 214);
+    } else {
+      field('roster', 'Roster code', this.joinRoster, 160);
+    }
+    const rows = this.joinField === 'nick' ? KEYS : ['23456789', ...KEYS];
+    rows.forEach((row, r) => {
+      const y = 300 + r * 82;
+      const offset = r * 30 + (row.length < 9 ? 40 : 0);
+      [...row].forEach((k, i) => {
+        p.button(
+          `jkey-${k}`,
+          k,
+          60 + offset + i * 116,
+          y,
+          104,
+          74,
+          () => {
+            this.joinType(k);
+            p.redraw();
+          },
+          { size: 34 },
+        );
+      });
+    });
+    if (this.joinStatus)
+      p.text(this.joinStatus, 50, p.heightPx - 150, {
+        size: 26,
+        color: this.joinBusy ? UI.muted : UI.warn,
+        maxWidth: p.widthPx - 100,
+      });
+    const by = p.heightPx - 104;
+    p.button('jkey-back', '⌫', 50, by, 130, 76, () => {
+      this.joinBackspace();
+      p.redraw();
+    });
+    if (this.joinField === 'nick')
+      p.button('jkey-space', 'Space', 196, by, 190, 76, () => {
+        this.joinType(' ');
+        p.redraw();
+      });
+    p.button('join-switch', this.joinMode === 'code' ? 'Roster code' : 'Class code', 402, by, 250, 76, () => {
+      this.joinMode = this.joinMode === 'code' ? 'roster' : 'code';
+      this.joinField = this.joinMode === 'code' ? 'code' : 'roster';
+      this.joinStatus = '';
+      p.redraw();
+    });
+    p.button('join-cancel', 'Cancel', 668, by, 230, 76, () => this.go(this.save.activeProfile ? 'home' : 'profiles'));
+    const ready =
+      this.joinMode === 'code'
+        ? this.joinCode.length >= 4 && this.joinNick.trim().length > 0
+        : this.joinRoster.length >= 4;
+    p.button('join-submit', 'Join', p.widthPx - 330, by, 280, 76, () => void this.submitJoin(), {
+      variant: 'primary',
+      enabled: ready && !this.joinBusy,
+    });
   }
 }

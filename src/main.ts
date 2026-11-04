@@ -60,12 +60,7 @@ async function main(): Promise<void> {
     if (!ok) note.textContent = 'Could not start VR. Check that your headset is connected and try again.';
   });
   $('play-screen').addEventListener('click', () => app.begin());
-  $('exit-screen').addEventListener('click', () => {
-    if (app.session.active) app.session.quit();
-    app.screen = 'title';
-    app.menus.close();
-    app.onScreenChange('title');
-  });
+  $('exit-screen').addEventListener('click', () => app.exitToTitle());
 
   // Records & certificates (2D overlay).
   const records = $('records');
