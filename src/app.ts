@@ -16,10 +16,11 @@ import { ConsequencePlayer } from './lessons/consequences';
 import type { LessonDef, Mode, VehicleId } from './lessons/engine/types';
 import { type FinishInfo, LessonSession } from './lessons/session';
 import { CROUCH_EYE, DESKTOP_EYE, Locomotion } from './locomotion/locomotion';
+import { ShopController } from './shop/shop-controller';
 import { type DialogButton, Hud } from './ui/hud';
 import { Markers } from './ui/markers';
-import { Menus } from './ui/menus';
-import { UI } from './ui/panel';
+import { Menus, type Screen } from './ui/menus';
+import { applyPalette, UI } from './ui/panel';
 import { formatDuration } from './ui/records';
 import { World } from './world/world';
 
@@ -45,6 +46,8 @@ export class App {
   readonly consequences: ConsequencePlayer;
   readonly interaction: Interaction;
   readonly session: LessonSession;
+  readonly shop: ShopController;
+  private paletteApplied = false;
   readonly xrInput: XRInput;
   readonly desktop: DesktopInput;
   screen: AppScreen = 'title';
@@ -65,6 +68,7 @@ export class App {
     this.world = new World(this.registry);
     const scene = this.world.scene;
     this.narrator = new Narrator(import.meta.env.BASE_URL);
+    this.narrator.context = () => this.sfx.context;
     this.locomotion = new Locomotion(this.camera, this.tweens, this.sfx);
     scene.add(this.locomotion.rig, this.locomotion.arcLine);
     this.locomotion.isFloorAllowed = (p) => this.world.isWalkable(p);
@@ -80,12 +84,14 @@ export class App {
       resume: () => this.resume(),
       restart: () => {
         this.resume();
-        this.session.restart();
+        // At the Shop counter there is no job to restart yet.
+        if (!this.shop.active || this.shop.phase === 'job') this.session.restart();
       },
       quitLesson: () => {
         this.resume();
         this.session.quit();
       },
+      startShift: () => this.startShift(),
     });
     this.menus.panel.mesh.position.set(0, 0.0, -1.3);
     this.hud.addCenterPanel(this.menus.panel.mesh);
@@ -110,8 +116,27 @@ export class App {
     });
     this.interaction = new Interaction(this.registry, this.session, this.sfx);
     this.interaction.panels = [this.menus.panel, ...this.hud.panels, this.markers.tag, this.world.scanTool.screen];
-    this.session.onFinish = (info) => this.showReport(info);
-    this.session.onQuit = () => this.toMenu();
+    this.shop = new ShopController({
+      world: this.world,
+      hud: this.hud,
+      narrator: this.narrator,
+      valkyrie: this.valkyrie,
+      tweens: this.tweens,
+      sfx: this.sfx,
+      save: this.save,
+      session: this.session,
+      teleport: (id, instant) => this.teleportTo(id, instant),
+      done: () => this.toMenu('shop'),
+    });
+    this.session.onFinish = (info) => (this.shop.active ? this.shop.onJobFinished(info) : this.showReport(info));
+    this.session.onQuit = () => {
+      if (this.shop.active) {
+        this.shop.abandon();
+        this.toMenu('shop');
+      } else {
+        this.toMenu();
+      }
+    };
     this.hud.onHint = () => this.session.hint();
     this.hud.onMenu = () => this.pause();
     this.hud.onDial = (d) => this.session.onAdjust(null, d);
@@ -155,7 +180,17 @@ export class App {
     const s = this.save.updateSettings(patch);
     this.sfx.setVolume(s.effectsVolume);
     this.narrator.volume = s.narrationVolume;
-    this.hud.captionSize = s.captionSize;
+    if (this.hud.captionSize !== s.captionSize) {
+      this.hud.captionSize = s.captionSize;
+      this.hud.layout(this.camera, this.renderer.xr.isPresenting);
+    }
+    if (patch.palette !== undefined || !this.paletteApplied) {
+      applyPalette(s.palette);
+      this.paletteApplied = true;
+      this.menus.panel.redraw();
+    }
+    this.locomotion.oneHanded = s.oneHanded;
+    this.locomotion.preferredHand = s.handedness;
     this.locomotion.snapDegrees = s.snapTurnDegrees;
     this.locomotion.seated = s.seated;
     this.locomotion.heightOffset = s.heightOffset;
@@ -240,7 +275,8 @@ export class App {
     void this.xrSession?.end();
   }
 
-  toMenu(): void {
+  toMenu(screen?: Screen): void {
+    if (this.shop.active) this.shop.abandon();
     this.screen = 'menu';
     this.onScreenChange(this.screen);
     this.hud.closeDialog();
@@ -248,8 +284,16 @@ export class App {
     this.world.reset();
     this.world.layoutCart([]);
     this.teleportTo('start', true);
-    this.menus.open();
+    this.menus.open(screen);
     this.onRecordsChanged();
+  }
+
+  startShift(seed?: number): void {
+    this.menus.close();
+    this.paused = false;
+    this.screen = 'lesson';
+    this.onScreenChange(this.screen);
+    this.shop.start(seed);
   }
 
   startLesson(lesson: LessonDef, mode: Mode, chosen: VehicleId, seed?: number): void {

@@ -14,6 +14,7 @@ import {
   Scene,
   Vector3,
 } from 'three';
+import { ease, type Tweens } from '../core/tween';
 import { boxCollider, collider, type Registry, sphereCollider } from '../interaction/registry';
 import { OIL_GRADES, oilTarget } from '../lessons/content/oil-change';
 import type { VehicleId } from '../lessons/engine/types';
@@ -21,6 +22,7 @@ import { CROUCH_EYE, DESKTOP_EYE } from '../locomotion/locomotion';
 import { sign } from '../ui/panel';
 import { VEHICLES, WHEELS, type WheelPos } from '../vehicles/specs';
 import { Vehicle } from '../vehicles/vehicle';
+import { Customer } from './customer';
 import { Lift } from './lift';
 import { build } from './lowpoly';
 import { C } from './palette';
@@ -120,6 +122,12 @@ const LOW_SPOTS = ['left-front', 'right-front', 'left-rear', 'right-rear', 'jack
 /** Where the scan tool hangs on the lift post. */
 const SCAN_HOOK = new Vector3(0.15, 1.3, 1.24);
 const LOCKBOX = new Vector3(-3.45, 0.98, -5.45);
+/** The service counter by the bay door; customers stand on the room side. */
+const COUNTER = new Vector3(-5.2, 1.02, 5.2);
+const CUSTOMER_SPOT = new Vector3(-5.55, 0, 3.85);
+const CUSTOMER_DOOR = new Vector3(-1.6, 0, 6.6);
+/** Where a Shop car waits before it drives in through the bay door. */
+const OUTSIDE = new Vector3(1.0, 0, 11.5);
 
 function yawFacing(from: Vector3, to: Vector3): number {
   return Math.atan2(-(to.x - from.x), -(to.z - from.z));
@@ -165,6 +173,9 @@ export class World {
   readonly lockbox: Mesh;
   /** Where the car body sits along x (0 on the lift). */
   carX = 0;
+  /** Shop mode: the customer at the counter, if any. */
+  customer: Customer | null = null;
+  private customerWalking = false;
   /** How far the floor jack has raised the front (0..1). */
   jackRaise = 0;
   private stage: StageSetup = {};
@@ -1054,6 +1065,8 @@ export class World {
       ['donor', 'Donor car', [DONOR_NOSE_X + 0.25, 0, 1.25], [DONOR_NOSE_X + 0.6, 0.8, 0.3]],
       ['exhaust', 'Tailpipe', [x + L.rear - 0.55, 0, 0.95], [x + (L.ice?.tailpipe[0] ?? L.rear), 0.3, 0.3]],
       ['ev-kit', 'HV safety kit', [nose + 1.0, 0, -L.halfWidth + 0.15], [nose + 1.0, 0.85, -L.halfWidth - 0.75]],
+      // Looks a little to the customer's side so they stand beside the counter dialog, not behind it.
+      ['counter', 'Service counter', [COUNTER.x, 0, COUNTER.z + 0.42], [CUSTOMER_SPOT.x - 1.0, 1.65, CUSTOMER_SPOT.z]],
     ];
   }
 
@@ -1112,6 +1125,15 @@ export class World {
     this.setSpotEnabled('hood', !this.stage.donor && !this.stage.jack);
     this.setSpotEnabled('exhaust', !!this.stage.exhaust);
     this.setSpotEnabled('ev-kit', !!this.stage.evKit);
+    // The counter is only for talking to Shop customers between jobs.
+    this.setSpotEnabled('counter', this.counterOpen);
+  }
+
+  /** Shop mode: shows the counter's floor ring while a customer is being served. */
+  counterOpen = false;
+  setCounterOpen(open: boolean): void {
+    this.counterOpen = open;
+    this.setSpotEnabled('counter', open);
   }
 
   private highlighted: WorkSpot | null = null;
@@ -1128,6 +1150,7 @@ export class World {
   }
 
   update(dt: number): void {
+    this.customer?.update(dt, this.customerWalking);
     if (!this.highlighted) return;
     this.pulse += dt;
     this.highlighted.marker.scale.setScalar(1 + Math.sin(this.pulse * 5) * 0.15);
@@ -1280,5 +1303,86 @@ export class World {
     this.carX = 0;
     v.root.position.x = 0;
     this.applyStage({});
+  }
+
+  // --- Shop mode ---
+
+  /** A new customer appears at the bay door. */
+  showCustomer(look: number): Customer {
+    this.hideCustomer();
+    const c = new Customer(look);
+    c.root.position.copy(CUSTOMER_DOOR);
+    this.scene.add(c.root);
+    this.customer = c;
+    return c;
+  }
+
+  hideCustomer(): void {
+    this.customer?.root.removeFromParent();
+    this.customer = null;
+  }
+
+  /** Walks the customer between the door and the counter. */
+  async walkCustomer(tweens: Tweens, toCounter: boolean): Promise<void> {
+    const c = this.customer;
+    if (!c) return;
+    const from = c.root.position.clone();
+    const to = toCounter ? CUSTOMER_SPOT : CUSTOMER_DOOR;
+    const d = to.clone().sub(from);
+    c.root.rotation.y = Math.atan2(d.x, d.z);
+    this.customerWalking = true;
+    await tweens.run(Math.max(0.4, d.length() / 1.3), (t) => c.root.position.lerpVectors(from, to, t));
+    this.customerWalking = false;
+    // Face the person behind the counter once there.
+    if (toCounter) c.root.rotation.y = Math.atan2(COUNTER.x - to.x, COUNTER.z + 0.42 - to.z);
+  }
+
+  /** Parks the current car outside the bay door, out of sight. */
+  parkOutside(): void {
+    const root = this.vehicle.root;
+    root.position.copy(OUTSIDE);
+    root.rotation.y = Math.PI / 2;
+    root.visible = false;
+  }
+
+  /** Drives the car from outside, through the bay door, onto its spot on the lift. */
+  async rollIn(tweens: Tweens, seconds = 4): Promise<void> {
+    const root = this.vehicle.root;
+    const end = new Vector3(this.carX, 0, 0);
+    const p = [OUTSIDE, new Vector3(OUTSIDE.x, 0, 3.6), new Vector3(end.x - 3.2, 0, 0), end];
+    root.visible = true;
+    await tweens.run(seconds, (t) => this.followPath(root, p, ease.inOut(t)));
+    root.position.set(this.carX, root.position.y, 0);
+    root.rotation.y = 0;
+  }
+
+  /** Drives the car forward and out of the bay door. */
+  async rollOut(tweens: Tweens, seconds = 3.5): Promise<void> {
+    const root = this.vehicle.root;
+    const start = root.position.clone();
+    const p = [start, new Vector3(start.x + 3.2, 0, 0), new Vector3(OUTSIDE.x, 0, 3.6), OUTSIDE];
+    await tweens.run(seconds, (t) => this.followPath(root, p, ease.inOut(t)));
+    this.parkOutside();
+  }
+
+  /** Puts a car back on the lift instantly (leaving Shop mode, or tests). */
+  parkInBay(): void {
+    const root = this.vehicle.root;
+    root.visible = true;
+    root.position.set(this.carX, root.position.y, 0);
+    root.rotation.y = 0;
+  }
+
+  private followPath(root: Object3D, p: Vector3[], t: number): void {
+    const [a, b, c, d] = p as [Vector3, Vector3, Vector3, Vector3];
+    const u = 1 - t;
+    const x = u * u * u * a.x + 3 * u * u * t * b.x + 3 * u * t * t * c.x + t * t * t * d.x;
+    const z = u * u * u * a.z + 3 * u * u * t * b.z + 3 * u * t * t * c.z + t * t * t * d.z;
+    const dx = 3 * u * u * (b.x - a.x) + 6 * u * t * (c.x - b.x) + 3 * t * t * (d.x - c.x);
+    const dz = 3 * u * u * (b.z - a.z) + 6 * u * t * (c.z - b.z) + 3 * t * t * (d.z - c.z);
+    root.position.x = x;
+    root.position.z = z;
+    // The car's nose is local +x, so it turns to face the way it is driving.
+    if (Math.abs(dx) + Math.abs(dz) > 1e-6) root.rotation.y = Math.atan2(-dz, dx);
   }
 }

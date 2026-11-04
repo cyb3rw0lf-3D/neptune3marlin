@@ -29,6 +29,11 @@ export class SoundFx {
   volume = 0.7;
 
   /** Must be called from a user gesture (click / enter VR). */
+  /** The shared audio context, once unlocked (narration packs play through it too). */
+  get context(): AudioContext | null {
+    return this.ctx;
+  }
+
   unlock(): void {
     if (this.ctx) {
       void this.ctx.resume();

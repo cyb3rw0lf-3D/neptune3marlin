@@ -3,7 +3,8 @@ import type { App } from '../app';
 import { createRng } from '../core/random';
 import { LESSONS, lessonById } from '../lessons/content';
 import type { ItemId, LessonId, Mode, TargetId, VehicleId } from '../lessons/engine/types';
-import type { Panel } from '../ui/panel';
+import { jobById } from '../shop/jobs';
+import { type Panel, UI } from '../ui/panel';
 import { VEHICLES } from '../vehicles/specs';
 
 /**
@@ -40,7 +41,72 @@ export function installTestHooks(app: App): void {
         scanPage: app.world.scanTool.page,
         tagOpen: app.markers.tagOpen,
         profiles: app.save.data.profiles.map((p) => p.name),
+        shop: api.shopState(),
+        gesture: r?.current?.gesture.kind ?? null,
+        dialog: app.hud.current
+          ? {
+              title: app.hud.current.title,
+              body: app.hud.current.body,
+              list: (app.hud.current.list ?? []).map((l) => l.text),
+            }
+          : null,
       };
+    },
+    /** Replaces a drafted job before its car comes in (tests pick the job they need). */
+    setShiftJob(
+      i: number,
+      templateId: string,
+      vehicle: VehicleId,
+      extra: { id: 'wipers' | 'tires'; severity: 0 | 1 | 2 } | null,
+    ) {
+      const job = jobById(templateId);
+      const sj = app.shop.jobs[i];
+      if (!job || !sj) return false;
+      sj.job = job;
+      sj.vehicle = vehicle;
+      sj.customerId = job.customer;
+      sj.extra = extra;
+      sj.comeback = null;
+      return true;
+    },
+    uiColors() {
+      return { ...UI };
+    },
+    shopState() {
+      const sh = app.shop;
+      const save = app.save.shop();
+      return {
+        active: sh.active,
+        phase: sh.phase,
+        index: sh.index,
+        jobs: sh.jobs.map((j) => ({
+          job: j.job.id,
+          lesson: j.job.lesson,
+          service: j.job.service,
+          vehicle: j.vehicle,
+          extra: j.extra,
+          comeback: j.comeback?.cause ?? null,
+        })),
+        asked: [...sh.asked],
+        wrongPicks: sh.wrongPicks,
+        money: save.money,
+        rep: save.rep,
+        upgrades: [...save.upgrades],
+        pending: save.pending.map((p) => p.cause ?? ''),
+        days: save.days.length,
+        customer: app.world.customer ? app.world.customer.root.position.toArray() : null,
+        carPos: app.world.vehicle.root.position.toArray(),
+        carVisible: app.world.vehicle.root.visible,
+      };
+    },
+    /** Sets up the active profile's shop (tests start at a chosen reputation or with upgrades). */
+    setShop(patch: { money?: number; rep?: number; upgrades?: string[]; pending?: unknown[] }) {
+      const shop = app.save.shop();
+      Object.assign(shop, patch);
+      app.save.persist();
+    },
+    startShift(seed = 1) {
+      app.startShift(seed);
     },
     begin() {
       app.begin();
@@ -195,7 +261,7 @@ export function installTestHooks(app: App): void {
      * first confirms every target can be pointed at from some enabled work spot
      * at that spot's eye height (nothing solid in the way), and lists the ones that cannot.
      */
-    async autoplay(check = true, untilStep?: string) {
+    async autoplay(check = true, untilStep?: string, sloppy = false, wrongTag?: string) {
       const s = app.session;
       const unreachable: string[] = [];
       const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -219,7 +285,13 @@ export function installTestHooks(app: App): void {
           continue;
         }
         if (r.awaitingTag && step.tag) {
-          if (app.markers.tagOpen) s.answer(step.tag.correct);
+          if (app.markers.tagOpen) {
+            // Optionally make one wrong inspection call (an upsell on a good part) first.
+            if (wrongTag === step.id) {
+              wrongTag = undefined;
+              s.answer(step.tag.correct === 0 ? 2 : 0);
+            } else s.answer(step.tag.correct);
+          }
           continue;
         }
         if (s.busy) continue;
@@ -229,7 +301,15 @@ export function installTestHooks(app: App): void {
         for (let i = 0; i < 25 && app.tweens.busy; i++) await wait(40);
         if (check && !visibleFromSpot(target)) unreachable.push(`${s.lesson?.id}:${s.vehicleId}:${step.id}:${target}`);
         const item = r.itemFor(target) ?? 'hand';
-        if (step.measure?.source === 'setting') app.session.torqueSetting = step.measure.spec;
+        if (step.measure?.source === 'setting') {
+          // A sloppy run sets the first torque spec too low once (a comeback in Shop mode).
+          app.session.torqueSetting = sloppy ? Math.max(5, step.measure.min - 10) : step.measure.spec;
+          if (sloppy) {
+            sloppy = false;
+            api.act(item, target);
+            continue;
+          }
+        }
         api.act(item, target, step.measure?.spec);
       }
       return { unreachable, result: s.runner?.result() ?? null };

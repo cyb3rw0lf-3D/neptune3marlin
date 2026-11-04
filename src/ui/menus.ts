@@ -2,10 +2,22 @@ import type { LessonProgress, SaveStore } from '../core/save';
 import type { Settings } from '../core/settings';
 import { LESSONS } from '../lessons/content';
 import type { LessonDef, Mode, VehicleId } from '../lessons/engine/types';
+import { MAX_REP, TIER_AT, TIER_NAMES, TIER_UNLOCKS, tierFor, UPGRADES } from '../shop/model';
+import { money } from '../shop/price-book';
 import { VEHICLES } from '../vehicles/specs';
 import { Panel, UI } from './panel';
 
-type Screen = 'profiles' | 'keyboard' | 'home' | 'lesson' | 'settings' | 'pause';
+export type Screen =
+  | 'profiles'
+  | 'keyboard'
+  | 'home'
+  | 'lesson'
+  | 'settings'
+  | 'access'
+  | 'pause'
+  | 'shop'
+  | 'upgrades'
+  | 'days';
 
 export interface MenuActions {
   startLesson(lesson: LessonDef, mode: Mode, vehicle: VehicleId): void;
@@ -14,6 +26,7 @@ export interface MenuActions {
   resume(): void;
   restart(): void;
   quitLesson(): void;
+  startShift(): void;
 }
 
 const KEYS = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'];
@@ -81,8 +94,20 @@ export class Menus {
       case 'settings':
         this.drawSettings(p);
         break;
+      case 'access':
+        this.drawAccess(p);
+        break;
       case 'pause':
         this.drawPause(p);
+        break;
+      case 'shop':
+        this.drawShop(p);
+        break;
+      case 'upgrades':
+        this.drawUpgrades(p);
+        break;
+      case 'days':
+        this.drawDays(p);
         break;
     }
   }
@@ -256,7 +281,7 @@ export class Menus {
     });
     const by = p.heightPx - 104;
     p.button('switch', 'Switch student', 50, by, 330, 76, () => this.go('profiles'));
-    p.button('shop', 'Shop mode (soon)', 400, by, 380, 76, () => {}, { enabled: false });
+    p.button('shop', 'Shop mode', 400, by, 380, 76, () => this.go('shop'), { variant: 'good' });
     p.button('settings', 'Settings', p.widthPx - 330, by, 280, 76, () => {
       this.returnTo = 'home';
       this.go('settings');
@@ -363,14 +388,6 @@ export class Menus {
         ],
       ],
       [
-        'Captions',
-        [
-          ['Small', () => set({ captionSize: 'small' }), s.captionSize === 'small'],
-          ['Medium', () => set({ captionSize: 'medium' }), s.captionSize === 'medium'],
-          ['Large', () => set({ captionSize: 'large' }), s.captionSize === 'large'],
-        ],
-      ],
-      [
         'Snap turn',
         [
           ['30°', () => set({ snapTurnDegrees: 30 }), s.snapTurnDegrees === 30],
@@ -378,22 +395,8 @@ export class Menus {
           ['90°', () => set({ snapTurnDegrees: 90 }), s.snapTurnDegrees === 90],
         ],
       ],
-      [
-        'Motion effects',
-        [
-          ['Full', () => set({ reducedMotion: false }), !s.reducedMotion],
-          ['Reduced', () => set({ reducedMotion: true }), s.reducedMotion],
-        ],
-      ],
     ];
-    rows.forEach(([label, options], r) => {
-      const y = 150 + r * 82;
-      p.text(label, 50, y + 18, { size: 28, color: UI.muted });
-      options.forEach(([text, fn, selected], i) => {
-        const w = options.length === 3 ? 240 : 370;
-        p.button(`set-${r}-${i}`, text, 330 + i * (w + 16), y, w, 66, fn, { selected, size: 26 });
-      });
-    });
+    this.optionRows(p, rows);
     const vy = 150 + rows.length * 82;
     p.text('Voice / effects', 50, vy + 18, { size: 28, color: UI.muted });
     const vol = (key: 'narrationVolume' | 'effectsVolume', d: number) =>
@@ -407,7 +410,80 @@ export class Menus {
 
     const by = p.heightPx - 96;
     p.button('calibrate', 'Calibrate my height', 50, by, 420, 72, () => this.actions.calibrateHeight());
+    p.button('accessibility', 'Accessibility', 490, by, 330, 72, () => this.go('access'));
     p.button('settings-done', 'Done', p.widthPx - 330, by, 280, 72, () => this.go(this.returnTo), {
+      variant: 'primary',
+    });
+  }
+
+  /** Rows of mutually exclusive option buttons, with a label on the left. */
+  private optionRows(p: Panel, rows: [string, [string, () => void, boolean][]][]): void {
+    rows.forEach(([label, options], r) => {
+      const y = 150 + r * 82;
+      p.text(label, 50, y + 18, { size: 28, color: UI.muted });
+      const gap = 16;
+      const w = Math.min(370, (p.widthPx - 380 - gap * (options.length - 1)) / options.length);
+      options.forEach(([text, fn, selected], i) => {
+        p.button(`set-${r}-${i}`, text, 330 + i * (w + gap), y, w, 66, fn, { selected, size: 26 });
+      });
+    });
+  }
+
+  private drawAccess(p: Panel): void {
+    const s = this.save.data.settings;
+    this.header(p, 'Accessibility', 'Text, colors, motion and controls. Saved on this device.');
+    const set = (patch: Partial<Settings>) => {
+      this.actions.settingsChanged(patch);
+      p.redraw();
+    };
+    this.optionRows(p, [
+      [
+        'Text size',
+        [
+          ['Small', () => set({ captionSize: 'small' }), s.captionSize === 'small'],
+          ['Medium', () => set({ captionSize: 'medium' }), s.captionSize === 'medium'],
+          ['Large', () => set({ captionSize: 'large' }), s.captionSize === 'large'],
+          ['Extra large', () => set({ captionSize: 'xlarge' }), s.captionSize === 'xlarge'],
+        ],
+      ],
+      [
+        'Colors',
+        [
+          ['Standard', () => set({ palette: 'standard' }), s.palette === 'standard'],
+          ['Color-blind safe', () => set({ palette: 'colorblind' }), s.palette === 'colorblind'],
+          ['High contrast', () => set({ palette: 'contrast' }), s.palette === 'contrast'],
+        ],
+      ],
+      [
+        'Controllers',
+        [
+          ['Two hands', () => set({ oneHanded: false }), !s.oneHanded],
+          ['One hand', () => set({ oneHanded: true }), s.oneHanded],
+        ],
+      ],
+      [
+        'Main hand',
+        [
+          ['Right', () => set({ handedness: 'right' }), s.handedness === 'right'],
+          ['Left', () => set({ handedness: 'left' }), s.handedness === 'left'],
+        ],
+      ],
+      [
+        'Motion effects',
+        [
+          ['Full', () => set({ reducedMotion: false }), !s.reducedMotion],
+          ['Reduced', () => set({ reducedMotion: true }), s.reducedMotion],
+        ],
+      ],
+    ]);
+    p.paragraph(
+      'One hand: the main-hand stick teleports (push forward) and turns (push left or right). Tags and highlights use shapes as well as colors.',
+      50,
+      570,
+      p.widthPx - 100,
+      { size: 24, color: UI.muted, maxLines: 3 },
+    );
+    p.button('access-done', 'Done', p.widthPx - 330, p.heightPx - 96, 280, 72, () => this.go('settings'), {
       variant: 'primary',
     });
   }
@@ -431,5 +507,109 @@ export class Menus {
     items.forEach(([id, label, fn, variant], i) => {
       p.button(id, label, 300, 180 + i * 140, p.widthPx - 600, 110, fn, { variant });
     });
+  }
+
+  // --- Shop mode ---
+
+  private drawShop(p: Panel): void {
+    const shop = this.save.shop();
+    const tier = tierFor(shop.rep);
+    this.header(
+      p,
+      'Shop mode',
+      `${TIER_NAMES[tier]} · ${money(shop.money)} in the bank · Shift ${shop.shift + 1} next`,
+    );
+    const W = p.widthPx;
+    // Reputation bar with tier marks.
+    const bx = 50;
+    const bw = W - 100;
+    p.text(`Reputation ${shop.rep} / ${MAX_REP}`, bx, 160, { size: 30, bold: true });
+    p.ctx.fillStyle = UI.card;
+    p.ctx.fillRect(bx, 206, bw, 26);
+    p.ctx.fillStyle = UI.good;
+    p.ctx.fillRect(bx, 206, (bw * shop.rep) / MAX_REP, 26);
+    TIER_AT.forEach((at, i) => {
+      const x = bx + (bw * at) / MAX_REP;
+      p.ctx.fillStyle = UI.text;
+      p.ctx.fillRect(x - 2, 198, 4, 42);
+      if (i > 0) p.text(String(i), x + 6, 240, { size: 22, color: UI.muted });
+    });
+    const next = TIER_AT[tier + 1];
+    p.paragraph(
+      next !== undefined
+        ? `Now open: ${TIER_UNLOCKS.slice(0, tier + 1).join('; ')}.\nNext at ${next} reputation: ${TIER_UNLOCKS[tier + 1]}.`
+        : `Every job is open: ${TIER_UNLOCKS.join('; ')}.`,
+      bx,
+      280,
+      bw,
+      { size: 26, color: UI.muted, maxLines: 4 },
+    );
+    const owned = UPGRADES.filter((u) => shop.upgrades.includes(u.id)).map((u) => u.name);
+    p.paragraph(
+      `Upgrades: ${owned.length ? owned.join(', ') : 'none yet'}${shop.pending.length ? ` · ${shop.pending.length} comeback(s) waiting` : ''}`,
+      bx,
+      440,
+      bw,
+      { size: 26, color: shop.pending.length ? UI.warn : UI.muted, maxLines: 2 },
+    );
+    p.paragraph(
+      'Customers describe a problem at the counter. Ask questions, write up the right service, then do the job. Hints cost $10. Sloppy work comes back.',
+      bx,
+      530,
+      bw,
+      { size: 24, color: UI.muted, maxLines: 3 },
+    );
+    const by = p.heightPx - 104;
+    p.button('shop-start', 'Start shift', 50, by, 330, 76, () => this.actions.startShift(), { variant: 'primary' });
+    p.button('shop-upgrades', 'Upgrades', 400, by, 260, 76, () => this.go('upgrades'));
+    p.button('shop-days', 'Day sheets', 680, by, 260, 76, () => this.go('days'));
+    p.button('shop-back', 'Back', W - 300, by, 250, 76, () => this.go('home'));
+  }
+
+  private drawUpgrades(p: Panel): void {
+    const shop = this.save.shop();
+    this.header(p, 'Upgrades', `${money(shop.money)} to spend. Tools change how jobs go, not the steps you must know.`);
+    UPGRADES.forEach((u, i) => {
+      const y = 150 + i * 118;
+      const owned = shop.upgrades.includes(u.id);
+      p.text(u.name, 50, y, { size: 30, bold: true, maxWidth: 700 });
+      p.paragraph(u.effect, 50, y + 40, 880, { size: 22, color: UI.muted, maxLines: 2 });
+      p.button(
+        `upgrade-${u.id}`,
+        owned ? 'Owned ✓' : money(u.price),
+        p.widthPx - 330,
+        y + 6,
+        280,
+        76,
+        () => {
+          if (owned || shop.money < u.price) return;
+          shop.money = Math.round((shop.money - u.price) * 100) / 100;
+          shop.upgrades.push(u.id);
+          this.save.persist();
+          p.redraw();
+        },
+        { enabled: !owned && shop.money >= u.price, variant: owned ? 'good' : 'normal' },
+      );
+    });
+    p.button('upgrades-back', 'Back', p.widthPx - 300, p.heightPx - 104, 250, 76, () => this.go('shop'));
+  }
+
+  private drawDays(p: Panel): void {
+    const shop = this.save.shop();
+    this.header(p, 'Day sheets', shop.days.length ? 'Your most recent shifts.' : 'No shifts worked yet.');
+    shop.days
+      .slice(-6)
+      .reverse()
+      .forEach((d, i) => {
+        const y = 150 + i * 96;
+        p.text(`Shift ${d.shift}: ${d.jobs.length} jobs`, 50, y, { size: 30, bold: true });
+        p.text(
+          `Net ${money(d.net)} · Rep ${d.repChange >= 0 ? '+' : ''}${d.repChange} · Tips ${money(d.tips)}${d.comebacksBooked ? ` · ${d.comebacksBooked} comeback(s)` : ''}`,
+          50,
+          y + 40,
+          { size: 24, color: d.net >= 0 ? UI.muted : UI.bad, maxWidth: p.widthPx - 100 },
+        );
+      });
+    p.button('days-back', 'Back', p.widthPx - 300, p.heightPx - 104, 250, 76, () => this.go('shop'));
   }
 }

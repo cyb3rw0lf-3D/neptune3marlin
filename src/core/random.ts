@@ -19,3 +19,12 @@ export function pick<T>(rng: Rng, items: readonly T[]): T {
 export function randomSeed(): number {
   return Math.floor(Math.random() * 2 ** 31);
 }
+
+/** Steps through seeds from `seed` until one is accepted (e.g. a variant that matches a job). */
+export function matchingSeed(seed: number, accept: (s: number) => boolean, tries = 400): number {
+  for (let i = 0; i < tries; i++) {
+    const s = (seed + i * 7919) >>> 0;
+    if (accept(s)) return s;
+  }
+  return seed;
+}

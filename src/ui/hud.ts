@@ -39,7 +39,15 @@ export interface DialogSpec {
 
 const MODE_LABEL = { learn: 'LEARN', practice: 'PRACTICE', test: 'TEST' };
 const MODE_COLOR = { learn: UI.accent, practice: UI.warn, test: UI.bad };
-const TONE_COLOR = { info: UI.accent, warn: UI.warn, safety: UI.bad, good: UI.good, question: UI.accent };
+const TONE_COLOR = {
+  info: () => UI.accent,
+  warn: () => UI.warn,
+  safety: () => UI.bad,
+  good: () => UI.good,
+  question: () => UI.accent,
+};
+/** Panel scale for each text-size setting. */
+const TEXT_SCALE: Record<CaptionSize, number> = { small: 0.9, medium: 1, large: 1.15, xlarge: 1.3 };
 const TONE_ICON = { info: 'i', warn: '!', safety: '!', good: '✓', question: '?' };
 
 /**
@@ -97,6 +105,7 @@ export class Hud {
   layout(camera: PerspectiveCamera, xr: boolean): void {
     const meshes = [this.clipboard.mesh, this.captions.mesh, this.dialog.mesh, ...this.centerPanels];
     for (const m of meshes) this.remember(m);
+    const text = TEXT_SCALE[this.captionSize];
     if (xr) {
       for (const m of meshes) {
         const h = this.home.get(m);
@@ -105,7 +114,8 @@ export class Hud {
           m.position.copy(h.position);
           m.rotation.copy(h.rotation);
         }
-        m.scale.setScalar(1);
+        // Bigger text settings make the floating panels bigger too.
+        m.scale.setScalar(m === this.captions.mesh ? 1 : text);
       }
       return;
     }
@@ -122,7 +132,9 @@ export class Hud {
       m.position.set(0, 0.02, -d);
     }
     const narrow = camera.aspect < 1;
-    const cs = narrow ? fitScale(0.5, 0.66, 0.42, 0.42) : fitScale(0.5, 0.66, 0.27, 0.78);
+    const cs = narrow
+      ? fitScale(0.5, 0.66, 0.42, 0.42)
+      : Math.min(fitScale(0.5, 0.66, 0.27, 0.78) * text, fitScale(0.5, 0.66, 0.36, 0.84));
     camera.add(this.clipboard.mesh);
     this.clipboard.mesh.rotation.set(0, 0, 0);
     this.clipboard.mesh.scale.setScalar(cs);
@@ -154,7 +166,7 @@ export class Hud {
   setCaption(text: string | null): void {
     this.captions.mesh.visible = !!text;
     if (!text) return;
-    const size = this.captionSize === 'small' ? 30 : this.captionSize === 'large' ? 44 : 36;
+    const size = { small: 30, medium: 36, large: 44, xlarge: 54 }[this.captionSize];
     this.captions.setDraw((p) => {
       p.background(24, 'rgba(8, 14, 20, 0.88)');
       p.text('VALKYRIE', 28, 16, { size: 22, bold: true, color: '#37e0d0' });
@@ -249,14 +261,18 @@ export class Hud {
     }
   }
 
+  /** The dialog on screen now (read by tests). */
+  current: DialogSpec | null = null;
+
   openDialog(spec: DialogSpec): void {
+    this.current = spec;
     this.dialogOpen = true;
     this.dialog.mesh.visible = true;
     this.dialog.hoverId = null;
     this.dialog.setDraw((p) => {
       p.background(30);
       const W = p.widthPx;
-      const color = TONE_COLOR[spec.tone];
+      const color = TONE_COLOR[spec.tone]();
       p.ctx.fillStyle = color;
       p.ctx.fillRect(0, 0, W, 12);
       p.ctx.beginPath();
@@ -301,6 +317,7 @@ export class Hud {
   }
 
   closeDialog(): void {
+    this.current = null;
     this.dialogOpen = false;
     this.dialog.mesh.visible = false;
   }

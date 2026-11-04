@@ -100,15 +100,29 @@ test('stays within the Quest 2 rendering budget', async ({ page }) => {
   }
 });
 
-test('narration clips are bundled for every scripted line', async ({ page }) => {
+test('narration packs are bundled and every clip fits inside its decoded pack', async ({ page }) => {
   await openGame(page);
   const manifest = await page.evaluate(async () => (await fetch('audio/narration/manifest.json')).json());
   const keys = Object.keys(manifest.clips);
   expect(keys.length).toBeGreaterThan(100);
-  const first = manifest.clips[keys[0] as string];
-  const res = await page.request.get(`/audio/narration/${first}`);
+  expect(manifest.packs.length).toBeLessThan(120);
+  const res = await page.request.get(`/audio/narration/${manifest.packs[0]}`);
   expect(res.ok()).toBe(true);
   expect(res.headers()['content-type']).toContain('audio');
+  // Decode a few packs the way the narrator does and check every slice is inside.
+  const bad = await page.evaluate(async (m) => {
+    const ctx = new OfflineAudioContext(1, 22050, 22050);
+    const out: string[] = [];
+    for (const i of [0, Math.floor(m.packs.length / 2), m.packs.length - 1]) {
+      const data = await (await fetch(`audio/narration/${m.packs[i]}`)).arrayBuffer();
+      const buf = await ctx.decodeAudioData(data);
+      for (const [key, clip] of Object.entries(m.clips as Record<string, [number, number, number]>)) {
+        if (clip[0] === i && clip[1] + clip[2] > buf.duration + 0.05) out.push(`${key} ends after pack ${i}`);
+      }
+    }
+    return out;
+  }, manifest);
+  expect(bad).toEqual([]);
 });
 
 test('every lesson target and tool exists in the 3D world', async ({ page }) => {

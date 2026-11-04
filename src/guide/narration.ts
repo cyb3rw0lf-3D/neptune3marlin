@@ -5,10 +5,18 @@
  * Captions are always shown.
  */
 
+/**
+ * Where each recorded line lives. A clip is either its own file, or a slice of a
+ * pack file: [pack index, start seconds, length seconds]. Packs keep the number
+ * of files small enough for hosts with file limits.
+ */
 export interface NarrationManifest {
-  /** line key (hash of the spoken text) -> clip file name */
-  clips: Record<string, string>;
+  clips: Record<string, string | [number, number, number]>;
+  packs?: string[];
 }
+
+/** Who is talking: Valkyrie (no speaker) or a Shop customer's voice. */
+export type Speaker = string | undefined;
 
 /** Turns symbols and units into words a voice reads naturally. */
 export function speakable(text: string): string {
@@ -28,9 +36,9 @@ export function speakable(text: string): string {
 }
 
 /** Stable short key for a line of narration (FNV-1a). Shared with the clip generator. */
-export function lineKey(text: string): string {
+export function lineKey(text: string, speaker?: Speaker): string {
   let h = 0x811c9dc5;
-  const s = speakable(text);
+  const s = speaker ? `${speaker}|${speakable(text)}` : speakable(text);
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
@@ -52,6 +60,10 @@ export class Narrator {
   private resolveCurrent: (() => void) | null = null;
   private token = 0;
   private voice: SpeechSynthesisVoice | null = null;
+  private source: AudioBufferSourceNode | null = null;
+  private packs = new Map<number, Promise<AudioBuffer | null>>();
+  /** The audio context packs are decoded and played with (null until audio is unlocked). */
+  context: () => AudioContext | null = () => null;
   volume = 0.9;
   /** Set to make every line finish instantly (automated tests). */
   instant = false;
@@ -86,7 +98,7 @@ export class Narrator {
   }
 
   /** Speaks a line, interrupting anything already playing. Resolves when it ends. */
-  say(text: string): Promise<void> {
+  say(text: string, speaker?: Speaker): Promise<void> {
     this.stop();
     const token = ++this.token;
     this.onCaption(text);
@@ -108,8 +120,19 @@ export class Narrator {
       }
       // Safety net in case audio never reports the end.
       const fallbackMs = readingSeconds(text) * 1000 + 6000;
-      const clip = this.manifest.clips[lineKey(text)];
-      if (clip && this.volume > 0) {
+      const clip = this.manifest.clips[lineKey(text, speaker)];
+      if (Array.isArray(clip) && this.volume > 0 && this.context()) {
+        const [pack, start, length] = clip;
+        this.timer = window.setTimeout(finish, fallbackMs + 20000);
+        void this.playSlice(pack, start, length, token).then((ok) => {
+          if (token !== this.token) return;
+          if (ok) return;
+          if (!this.speak(text, finish, speaker)) this.timed(text, finish);
+        });
+        this.onSliceEnd = () => window.setTimeout(finish, 250);
+        return;
+      }
+      if (typeof clip === 'string' && this.volume > 0) {
         const audio = new Audio(`${this.baseUrl}audio/narration/${clip}`);
         audio.volume = this.volume;
         this.audio = audio;
@@ -119,7 +142,7 @@ export class Narrator {
         this.timer = window.setTimeout(finish, fallbackMs + 20000);
         return;
       }
-      if (this.speak(text, finish)) {
+      if (this.speak(text, finish, speaker)) {
         this.timer = window.setTimeout(finish, fallbackMs);
         return;
       }
@@ -127,14 +150,67 @@ export class Narrator {
     });
   }
 
-  private speak(text: string, done: () => void): boolean {
+  private onSliceEnd: () => void = () => {};
+
+  /** Plays part of a pack file. Resolves false if the pack could not be loaded. */
+  private async playSlice(pack: number, start: number, length: number, token: number): Promise<boolean> {
+    const ctx = this.context();
+    if (!ctx) return false;
+    const decoded = await this.loadPack(ctx, pack);
+    if (!decoded) {
+      this.packs.delete(pack);
+      return false;
+    }
+    if (token !== this.token) return true;
+    const src = ctx.createBufferSource();
+    src.buffer = decoded;
+    const gain = ctx.createGain();
+    gain.gain.value = this.volume;
+    src.connect(gain).connect(ctx.destination);
+    src.onended = () => {
+      if (this.source === src) this.source = null;
+      if (token === this.token) this.onSliceEnd();
+    };
+    this.source = src;
+    src.start(0, start, length);
+    return true;
+  }
+
+  /** Fetches and decodes a pack once; keeps only a few in memory (headsets have little to spare). */
+  private loadPack(ctx: AudioContext, pack: number): Promise<AudioBuffer | null> {
+    const cached = this.packs.get(pack);
+    if (cached) return cached;
+    const file = this.manifest.packs?.[pack];
+    const loading: Promise<AudioBuffer | null> = file
+      ? fetch(`${this.baseUrl}audio/narration/${file}`)
+          .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.statusText))))
+          .then((data) => ctx.decodeAudioData(data))
+          .catch(() => null)
+      : Promise.resolve(null);
+    this.packs.set(pack, loading);
+    if (this.packs.size > 8) this.packs.delete(this.packs.keys().next().value as number);
+    return loading;
+  }
+
+  /** Starts decoding the packs that hold these lines, so they play without a delay. */
+  preload(lines: { text: string; speaker?: Speaker }[]): void {
+    const ctx = this.context();
+    if (!ctx) return;
+    for (const { text, speaker } of lines) {
+      const clip = this.manifest.clips[lineKey(text, speaker)];
+      if (Array.isArray(clip)) void this.loadPack(ctx, clip[0]);
+    }
+  }
+
+  private speak(text: string, done: () => void, speaker?: Speaker): boolean {
     try {
       const synth = window.speechSynthesis;
       if (!synth || this.volume <= 0) return false;
       const u = new SpeechSynthesisUtterance(speakable(text));
       if (this.voice) u.voice = this.voice;
       u.rate = 1.03;
-      u.pitch = 1.1;
+      // Customers sound different from Valkyrie even with the browser's voice.
+      u.pitch = speaker ? 0.75 + (lineKey(speaker).charCodeAt(0) % 5) * 0.1 : 1.1;
       u.volume = this.volume;
       u.onend = () => window.setTimeout(done, 200);
       u.onerror = () => done();
@@ -158,6 +234,15 @@ export class Narrator {
   stop(): void {
     this.token++;
     this.clearTimer();
+    if (this.source) {
+      this.source.onended = null;
+      try {
+        this.source.stop();
+      } catch {
+        // already stopped
+      }
+      this.source = null;
+    }
     if (this.audio) {
       this.audio.onended = null;
       this.audio.pause();

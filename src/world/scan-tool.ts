@@ -16,6 +16,14 @@ const BUTTONS: [ScanButton, string][] = [
   ['scan-clear', 'Clear codes'],
 ];
 
+/** Repair-information tips the pro scan tool shows for each code. */
+const PRO_TIPS: Record<string, string> = {
+  P0455: 'Large evap leak. Most often a loose, cracked or wrong gas cap. Check the cap seal first.',
+  P0301: 'Cylinder 1 misfire. Swap the coil to another cylinder to see if the misfire follows it.',
+  P0171: 'System lean. Compare fuel trims at idle and 2500 rpm; high at idle points to a vacuum leak.',
+  P0128: 'Coolant below thermostat temp. Watch coolant temp warm up; a plateau means a stuck-open thermostat.',
+};
+
 /**
  * A handheld OBD-II scan tool with its own screen and buttons. The lesson
  * fills in what each screen says; `pages` maps a page to a screen key so a
@@ -28,6 +36,8 @@ export class ScanTool {
   readonly pages: Record<'codes' | 'freeze' | 'live', string> = { codes: 'codes', freeze: 'freeze', live: 'live' };
   page: ScanPage = 'home';
   connected = false;
+  /** Pro scan tool upgrade: repair-information tips on the codes page. */
+  pro = false;
   onButton: (id: ScanButton) => void = () => {};
 
   constructor() {
@@ -99,9 +109,18 @@ export class ScanTool {
           : this.page === 'cleared'
             ? ['Codes cleared.', 'Readiness monitors reset.']
             : (this.screens[key] ?? ['No data']);
-      lines.slice(0, 7).forEach((line, i) => {
+      const code = this.page === 'codes' && this.pro ? lines.join(' ').match(/P0\d{3}/)?.[0] : undefined;
+      const tip = code ? PRO_TIPS[code] : undefined;
+      lines.slice(0, tip ? 3 : 7).forEach((line, i) => {
         p.text(line, 20, 52 + i * 27, { size: 20, color: i === 0 ? UI.text : '#cfe9da', maxWidth: p.widthPx - 40 });
       });
+      if (tip) {
+        p.paragraph(`PRO TIP: ${tip}`, 20, 52 + 3 * 27 + 4, p.widthPx - 40, {
+          size: 17,
+          color: '#ffd166',
+          maxLines: 4,
+        });
+      }
       BUTTONS.forEach(([id, label], i) => {
         const x = 20 + (i % 2) * 145;
         const y = 250 + Math.floor(i / 2) * 64;
