@@ -12,6 +12,10 @@ export const LESSON_KEYS = [
   'obd2',
   'spark-plugs',
   'ev-safety',
+  'wipers-bulbs',
+  'coolant-flush',
+  'alignment',
+  'ac-check',
 ] as const;
 export type LessonKey = (typeof LESSON_KEYS)[number];
 
@@ -25,6 +29,10 @@ export const LESSON_TITLES: Record<LessonKey, string> = {
   obd2: 'OBD-II Diagnostics',
   'spark-plugs': 'Spark Plugs & Ignition',
   'ev-safety': 'EV High-Voltage Safety',
+  'wipers-bulbs': 'Wipers, Bulbs & Cabin Filter',
+  'coolant-flush': 'Coolant Flush & Bleed',
+  alignment: 'Wheel Alignment Check',
+  'ac-check': 'A/C Performance Check',
 };
 export const MODES = ['learn', 'practice', 'test'] as const;
 export type ModeKey = (typeof MODES)[number];

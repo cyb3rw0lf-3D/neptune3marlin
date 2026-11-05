@@ -85,6 +85,8 @@ export class ConsequencePlayer {
         return this.wheelSpin();
       case 'co-alarm':
         return this.coAlarm();
+      case 'glass-crack':
+        return this.glassCrack();
       default:
         this.sfx.play('error');
         return this.tweens.wait(0.4);
@@ -310,6 +312,16 @@ export class ConsequencePlayer {
       this.spawn(at, v, mat, this.sparkGeo, 0.7);
     }
     await this.tweens.wait(1.6);
+  }
+
+  /** A wiper arm snapping onto the windshield: a sharp crack and a white flash. */
+  private async glassCrack(): Promise<void> {
+    this.sfx.play('clunk');
+    const mat = this.flash.material as MeshBasicMaterial;
+    mat.color.setHex(0xe8f4ff);
+    await this.redFlash(0.6);
+    mat.color.setHex(0xff3b30);
+    await this.tweens.wait(0.5);
   }
 
   private async eyeSplash(): Promise<void> {

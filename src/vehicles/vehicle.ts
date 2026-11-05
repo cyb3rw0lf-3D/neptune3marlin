@@ -132,6 +132,7 @@ export class Vehicle {
     else this.buildEngineBay();
     this.buildUnderside();
     this.buildIceParts();
+    this.buildServiceParts();
     for (const pos of WHEELS) this.buildWheel(pos);
     for (const pos of FRONT) this.buildFrontBrake(pos);
     this.buildLamps();
@@ -330,6 +331,54 @@ export class Vehicle {
   }
 
   /** Coils, gas cap, vacuum hose, thermostat housing and tailpipe on gas engines. */
+  /** Tie rods hang just below the floor pan so they can be seen from under the car. */
+  private tieRodY(): number {
+    return Math.min(this.layout.wheelR - 0.05, 0.2);
+  }
+
+  /** Small parts for the Stage 6 lessons: A/C ports, tie rods, the radiator petcock and bleeder. */
+  private buildServiceParts(): void {
+    const L = this.layout;
+    const at = L.at;
+    const b = build()
+      // A/C service ports: blue low side (L), red high side (H)
+      .cyl(0.014, 0.014, 0.03, 8, 0x2f6fd6, {
+        p: [at.brakeFluid[0] + 0.1, at.brakeFluid[1] + 0.005, -at.brakeFluid[2]],
+      })
+      .cyl(0.014, 0.014, 0.03, 8, C.safetyRed, { p: [at.radiatorCap[0] - 0.12, at.radiatorCap[1] + 0.005, 0.22] })
+      .cyl(0.008, 0.008, 0.2, 6, C.darkSteel, {
+        p: [at.brakeFluid[0] + 0.1, at.brakeFluid[1] - 0.08, -at.brakeFluid[2]],
+      })
+      // dash vent
+      .box(0.02, 0.05, 0.1, 0x1b1f22, {
+        p: [at.startButton[0] - 0.04, at.startButton[1] + 0.02, at.startButton[2] + 0.12],
+      });
+    for (const sign of [-1, 1]) {
+      const z = sign * (L.trackZ - 0.22);
+      b.cyl(0.014, 0.014, 0.42, 6, C.steel, {
+        p: [L.wheelX.front - 0.14, this.tieRodY(), z - sign * 0.12],
+        r: [Math.PI / 2, 0, 0],
+      }).cyl(0.022, 0.022, 0.025, 6, C.darkSteel, {
+        p: [L.wheelX.front - 0.14, this.tieRodY(), z - sign * 0.1],
+        r: [Math.PI / 2, 0, 0],
+      });
+    }
+    const ice = L.ice;
+    if (ice) {
+      b.cyl(0.016, 0.016, 0.04, 6, C.safetyYellow, { p: [L.front - 0.32, 0.24, -0.34] }).cyl(
+        0.009,
+        0.009,
+        0.025,
+        6,
+        C.copper,
+        {
+          p: [ice.thermostat[0], ice.thermostat[1] + 0.04, ice.thermostat[2] + 0.04],
+        },
+      );
+    }
+    this.root.add(b.mesh('service-parts'));
+  }
+
   private buildIceParts(): void {
     const ice = this.layout.ice;
     if (!ice) return;
@@ -587,6 +636,25 @@ export class Vehicle {
     this.anchor('upper-hose', at.upperHose);
     this.anchor('wipers', at.wipers);
     this.anchor('leak-check', at.leakCheck);
+    // Stage 6 service points, placed relative to the parts above so every body gets them.
+    const hl = at.headlights;
+    // Inside the engine bay behind the driver headlight, kept clear of the fender.
+    this.anchor('headlight-socket', [
+      Math.min(hl.x - 0.13, at.washer[0]),
+      Math.max(hl.y + 0.03, at.washer[1] - 0.02),
+      -hl.z + 0.04,
+    ]);
+    // Gas cars: the cabin filter sits at the rear of the engine bay, just ahead of the hood hinge.
+    if (!this.layout.ev) this.anchor('cabin-filter', [L.hood.pivot[0] + 0.1, at.wipers[1] - 0.06, 0.45]);
+    this.anchor('ac-low-port', [at.brakeFluid[0] + 0.1, at.brakeFluid[1] + 0.02, -at.brakeFluid[2]]);
+    this.anchor('ac-high-port', [at.radiatorCap[0] - 0.12, at.radiatorCap[1] + 0.02, 0.22]);
+    this.anchor('center-vent', [at.startButton[0] - 0.04, at.startButton[1] + 0.02, at.startButton[2] + 0.12]);
+    this.anchor('steering-wheel', [at.driverSeat[0] + 0.42, at.driverSeat[1] - 0.06, at.driverSeat[2] + 0.42]);
+    for (const side of ['FL', 'FR'] as const) {
+      const z = (side === 'FL' ? -1 : 1) * (L.trackZ - 0.22);
+      this.anchor(`tie-rod-${side}`, [L.wheelX.front - 0.14, this.tieRodY(), z]);
+      this.anchor(`jam-nut-${side}`, [L.wheelX.front - 0.14, this.tieRodY(), z - Math.sign(z) * 0.1]);
+    }
     const ice = L.ice;
     if (ice) {
       this.anchor('dlc', ice.dlc);
@@ -595,6 +663,8 @@ export class Vehicle {
       this.anchor('thermostat', ice.thermostat);
       this.anchor('tailpipe', ice.tailpipe);
       this.anchor('engine-cover', [at.fillCap[0], at.fillCap[1], at.fillCap[2] - 0.15]);
+      this.anchor('radiator-petcock', [L.front - 0.32, 0.24, -0.34]);
+      this.anchor('bleeder', [ice.thermostat[0], ice.thermostat[1] + 0.045, ice.thermostat[2] + 0.04]);
       ice.coils.forEach((c, i) => {
         this.anchor(`coil-${i + 1}`, c);
         this.anchor(`plug-well-${i + 1}`, [c[0], c[1] - 0.02, c[2]]);
@@ -679,6 +749,17 @@ export class Vehicle {
     t('brake-reservoir', 'Brake fluid reservoir', 'brake-reservoir', boxCollider(0.12, 0.12, 0.12));
     t('wipers', 'Wiper blades', 'wipers', boxCollider(0.1, 0.06, 0.5));
     t('leak-check', 'Floor under the front of the car', 'leak-check', boxCollider(0.5, 0.06, 1.0));
+    t('headlight-socket', 'Headlight bulb socket (driver side)', 'headlight-socket', sphereCollider(0.05));
+    if (!this.layout.ev) t('cabin-filter', 'Cabin air filter cover', 'cabin-filter', boxCollider(0.22, 0.05, 0.16));
+    t('ac-low-port', 'A/C low-side service port (blue cap, L)', 'ac-low-port', sphereCollider(0.04));
+    t('ac-high-port', 'A/C high-side service port (red cap, H)', 'ac-high-port', sphereCollider(0.04));
+    t('center-vent', 'Center dash air vent', 'center-vent', sphereCollider(0.06));
+    t('steering-wheel', 'Steering wheel', 'steering-wheel', sphereCollider(0.12));
+    for (const side of ['FL', 'FR'] as const) {
+      const name = WHEEL_NAMES[side];
+      t(`tie-rod-${side}`, `Tie rod, ${name}`, `tie-rod-${side}`, boxCollider(0.06, 0.06, 0.14));
+      t(`jam-nut-${side}`, `Tie-rod jam nut, ${name}`, `jam-nut-${side}`, sphereCollider(0.035));
+    }
     const ice = this.layout.ice;
     if (ice) {
       // The OBD-II port sits under the dash; it is reached through the open driver's window.
@@ -688,6 +769,9 @@ export class Vehicle {
       t('thermostat', 'Thermostat housing', 'thermostat', sphereCollider(0.05));
       t('tailpipe', 'Tailpipe', 'tailpipe', sphereCollider(0.07));
       t('engine-cover', 'Engine cover', 'engine-cover', boxCollider(0.25, 0.05, 0.2));
+      t('radiator-petcock', 'Radiator drain petcock', 'radiator-petcock', sphereCollider(0.045));
+      t('radiator-neck', 'Radiator fill neck', 'radiator-cap', sphereCollider(0.07));
+      t('bleeder', 'Cooling system bleeder screw', 'bleeder', sphereCollider(0.03));
       ice.coils.forEach((_, i) => {
         const n = i + 1;
         t(`coil-${n}`, `Ignition coil, cylinder ${n}`, `coil-${n}`, sphereCollider(0.04));

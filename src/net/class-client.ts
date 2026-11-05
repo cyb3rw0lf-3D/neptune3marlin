@@ -1,5 +1,13 @@
 import type { Profile, SaveStore } from '../core/save';
-import type { ClassSettings, Heartbeat, JoinRequest, JoinResponse, ShopUpload, SyncResponse } from './protocol';
+import type {
+  AttemptUpload,
+  ClassSettings,
+  Heartbeat,
+  JoinRequest,
+  JoinResponse,
+  ShopUpload,
+  SyncResponse,
+} from './protocol';
 import { isDue, markFailed, markSent, nextBatch } from './sync-queue';
 
 /** The API's address, set at build time. Without it, class features stay hidden. */
@@ -126,16 +134,22 @@ export class ClassClient {
       for (let guard = 0; guard < 20; guard++) {
         const batch = nextBatch(link.outbox);
         const last = batch.length === link.outbox.pending.length;
-        const res = await this.request<SyncResponse>(
-          'POST',
-          '/sync',
-          {
-            attempts: batch,
-            ...(last ? { shop: shopStats(profile), heartbeat: (live ? this.heartbeat() : null) ?? undefined } : {}),
-          },
-          link.token,
-        );
-        markSent(link.outbox, batch, Date.now());
+        const body = {
+          attempts: batch,
+          ...(last ? { shop: shopStats(profile), heartbeat: (live ? this.heartbeat() : null) ?? undefined } : {}),
+        };
+        let res: SyncResponse;
+        try {
+          res = await this.request<SyncResponse>('POST', '/sync', body, link.token);
+          markSent(link.outbox, batch, Date.now());
+        } catch (err) {
+          // An older server can refuse a run from a lesson it does not know yet. Send the
+          // batch one at a time so one refused run never blocks the rest; refused runs stay
+          // in the student's own records.
+          if (!(err instanceof ApiError && err.status === 400 && batch.length > 0)) throw err;
+          res = await this.sendOneByOne(link.token, batch, body);
+          link.outbox.lastError = null;
+        }
         const changed =
           JSON.stringify(res.settings) !== JSON.stringify(link.settings) || res.className !== link.className;
         link.settings = res.settings;
@@ -155,6 +169,26 @@ export class ClassClient {
       markFailed(link.outbox, Date.now(), err instanceof Error ? err.message : String(err));
       this.save.persist();
     }
+  }
+
+  private async sendOneByOne(
+    token: string,
+    batch: AttemptUpload[],
+    body: { shop?: ShopUpload; heartbeat?: Heartbeat },
+  ): Promise<SyncResponse> {
+    const profile = this.save.data.profiles.find((p) => p.class?.token === token);
+    const outbox = profile?.class?.outbox;
+    let last: SyncResponse | null = null;
+    for (const a of batch) {
+      try {
+        last = await this.request<SyncResponse>('POST', '/sync', { attempts: [a] }, token);
+      } catch (err) {
+        if (!(err instanceof ApiError && err.status === 400)) throw err;
+      }
+      if (outbox) markSent(outbox, [a], Date.now());
+    }
+    // One last call carries the Shop stats and heartbeat (and returns the class settings).
+    return last ?? (await this.request<SyncResponse>('POST', '/sync', { attempts: [], ...body }, token));
   }
 
   /** Short status line for the menu: class name and how syncing is going. */

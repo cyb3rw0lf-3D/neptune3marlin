@@ -27,6 +27,7 @@ Every run produces a report card (score, safety errors, hints, time, each mistak
 
 | Lesson | Status |
 | --- | --- |
+| Wipers, Bulbs & Cabin Filter (a day-one starter: towel under the wiper arm, match the bulb, hold it by the base, filter arrow the right way) | Available |
 | Oil & Filter Change | Available |
 | Tire Service (pressure, tread, wear patterns, rotation, star-pattern torque) | Available |
 | Brake Inspection & Pads (wheel chocks, floor jack and jack stands, pad and rotor measurements, caliper on an S-hook, pedal pump) | Available |
@@ -35,6 +36,9 @@ Every run produces a report card (score, safety errors, hints, time, each mistak
 | OBD-II Diagnostics (scan tool with its own screen; random fault: loose gas cap, misfire with a coil swap test, vacuum leak from fuel trims, or a stuck-open thermostat) | Available |
 | Spark Plugs & Ignition (cold check, blow out the well, read the old plug, gap, start by hand, torque) | Available |
 | EV High-Voltage Safety (spot the orange parts, barrier, glove air test, lockbox, 12 V off, service disconnect, wait, live-dead-live) | Available |
+| Coolant Flush & Bleed (cold-engine check, read the old coolant, drain into a pan, fill with the right type, bleed the air, freeze point) | Available |
+| Wheel Alignment Check (read the alignment console, center the steering wheel, set toe with the tie rod, torque the jam nut, refer camber) | Available |
+| A/C Performance Check (glasses on, blue and red couplers on the right ports, gauge pressures and vent temperature, diagnosis, EPA 609 rules) | Available |
 
 Three vehicles:
 - the **Aster S4** sedan;
@@ -55,7 +59,7 @@ Shop mode turns the lessons into a career at your own repair shop. A shift has 3
 4. **The courtesy check.** Some cars get one extra look at the end, at the wipers or the tires. The part may really be worn, or it may be fine. Recommend real problems and the customer may approve the extra work. Flag a good part and Valkyrie calls it out as an upsell.
 5. **The bill.** Pay, tips for quick and clean work, and reputation changes are shown after every job. Mistakes that would leave a defect (a drain plug under-torqued, lug nuts out of spec) bring the car back next shift as an unpaid **comeback**.
 
-The end-of-shift **day sheet** totals income, parts, hints, tips and reputation. Reputation unlocks new work in tiers: sedan basics first, then brakes and battery, the pickup, diagnostics and spark plugs, and finally the Wren EV. Money buys upgrades that change the work: a cordless impact wrench, a digital torque wrench (shows IN SPEC), a pro scan tool (repair tips for each code), a digital battery analyzer (state of health) and a wheel balancer (lets the shop sell tires).
+The end-of-shift **day sheet** totals income, parts, hints, tips and reputation. Reputation unlocks new work in tiers: sedan basics first, then brakes, battery and coolant, the pickup, diagnostics, spark plugs and A/C, and finally the Wren EV. Alignment jobs also need the shop's **alignment rack** upgrade. Money buys upgrades that change the work: a cordless impact wrench, a digital torque wrench (shows IN SPEC), a pro scan tool (repair tips for each code), a digital battery analyzer (state of health) and a wheel balancer (lets the shop sell tires).
 
 > Specs in the game are typical example values for fictional vehicles. Real service work always follows the manufacturer's service information.
 
@@ -69,6 +73,7 @@ Teachers get a web dashboard at **`/dashboard/`** on the same site (for example 
 
 The dashboard shows:
 - a **class grid** (students by lessons, with Learn, best Practice and best Test, and each student's runs and mistakes);
+- an **Overview** with pass rates per lesson (passed, working on it, not started) and the class's certificate count, plus a summary row under the grid;
 - the **most common mistakes** across the class, with safety errors flagged;
 - who is **playing now**;
 - **Shop mode** results.

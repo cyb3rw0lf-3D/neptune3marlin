@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SaveStore } from '../../src/core/save';
 import { LESSONS } from '../../src/lessons/content';
+import { ClassClient } from '../../src/net/class-client';
 import { lessonLock, modeLock, shopLock } from '../../src/net/gating';
 import {
   type AttemptUpload,
@@ -209,5 +210,48 @@ describe('class link in the save', () => {
     const again = new SaveStore({ getItem: () => JSON.stringify(save.data), setItem: () => {} });
     expect(again.activeProfile?.class?.className).toBe('Period 3');
     expect(again.activeProfile?.class?.outbox.pending).toHaveLength(1);
+  });
+});
+
+describe('sync with an older server', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('uploads what the server knows and drops only the runs it refuses', async () => {
+    const save = new SaveStore(memoryStore());
+    save.createProfile('Sam');
+    save.linkClass({
+      className: 'P3',
+      nickname: 'Sam',
+      studentId: 's1',
+      token: 's1.tok',
+      settings: defaultClassSettings(),
+    });
+    const link = save.activeProfile?.class;
+    if (!link) throw new Error('no link');
+    link.outbox.pending.push(
+      attempt('old-aaaaaaa1'),
+      attempt('new-bbbbbbb2', { lesson: 'alignment' }),
+      attempt('old-ccccccc3'),
+    );
+    const accepted: string[] = [];
+    vi.stubGlobal('fetch', async (_url: string, init: { body: string }) => {
+      const body = JSON.parse(init.body) as { attempts: AttemptUpload[] };
+      // This "old" server only knows the first eight lessons.
+      if (body.attempts.some((a) => a.lesson === 'alignment'))
+        return new Response(JSON.stringify({ error: 'invalid attempt' }), { status: 400 });
+      accepted.push(...body.attempts.map((a) => a.id));
+      return new Response(
+        JSON.stringify({
+          className: 'P3',
+          nickname: 'Sam',
+          settings: defaultClassSettings(),
+          accepted: body.attempts.length,
+        }),
+      );
+    });
+    await new ClassClient(save, 'https://api.test').sync(true);
+    expect(accepted).toEqual(['old-aaaaaaa1', 'old-ccccccc3']);
+    expect(link.outbox.pending).toEqual([]);
+    expect(link.outbox.failures).toBe(0);
   });
 });

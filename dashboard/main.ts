@@ -241,8 +241,9 @@ function renderCreated(c: CreateClassResponse): void {
 
 // --- the class dashboard ---
 
-type Tab = 'grid' | 'mistakes' | 'live' | 'shop' | 'settings' | 'export';
+type Tab = 'overview' | 'grid' | 'mistakes' | 'live' | 'shop' | 'settings' | 'export';
 const TABS: [Tab, string][] = [
+  ['overview', 'Overview'],
   ['grid', 'Class grid'],
   ['mistakes', 'Common mistakes'],
   ['live', 'Playing now'],
@@ -253,7 +254,7 @@ const TABS: [Tab, string][] = [
 
 let key = '';
 let view: ClassView | null = null;
-let tab: Tab = 'grid';
+let tab: Tab = 'overview';
 let refreshTimer: number | null = null;
 const panel = h('div', { class: 'panel', role: 'tabpanel', id: 'panel' });
 
@@ -321,7 +322,8 @@ function selectTab(t: Tab): void {
 async function renderTab(quiet = false): Promise<void> {
   if (!quiet) panel.replaceChildren(h('p', { class: 'muted' }, 'Loading…'));
   try {
-    if (tab === 'grid') await renderGrid();
+    if (tab === 'overview') await renderOverview();
+    else if (tab === 'grid') await renderGrid();
     else if (tab === 'mistakes') await renderMistakes();
     else if (tab === 'live') await renderLive();
     else if (tab === 'shop') await renderShop();
@@ -421,7 +423,152 @@ async function renderGrid(): Promise<void> {
       { class: 'muted small' },
       'L = Learn done, P = best Practice score, T = best Test score (✓ passed: 80% and no safety errors). Select a cell for the runs and mistakes.',
     ),
-    h('div', { class: 'scroll' }, h('table', { class: 'grid' }, h('thead', {}, head), h('tbody', {}, ...rows))),
+    h(
+      'div',
+      { class: 'scroll' },
+      h('table', { class: 'grid' }, h('thead', {}, head), h('tbody', {}, ...rows), h('tfoot', {}, summaryRow(v))),
+    ),
+  );
+}
+
+// --- class summary (shared by the grid's summary row and the Overview tab) ---
+
+interface LessonSummary {
+  lesson: LessonKey;
+  passed: number;
+  tried: number;
+  learned: number;
+  avgTest: number | null;
+}
+
+function summarize(v: ClassView): LessonSummary[] {
+  return LESSON_KEYS.map((lesson) => {
+    const cells = v.cells.filter((c) => c.lesson === lesson);
+    const tests = cells.filter((c) => c.mode === 'test');
+    const who = (list: typeof cells) => new Set(list.map((c) => c.studentId)).size;
+    return {
+      lesson,
+      passed: who(tests.filter((c) => c.passed)),
+      tried: who(cells),
+      learned: who(cells.filter((c) => c.mode === 'learn')),
+      avgTest: tests.length ? Math.round(tests.reduce((a, c) => a + c.best, 0) / tests.length) : null,
+    };
+  });
+}
+
+function summaryRow(v: ClassView): HTMLTableRowElement {
+  const n = v.students.length;
+  return h(
+    'tr',
+    { class: 'summary' },
+    h('th', { scope: 'row' }, 'Class'),
+    ...summarize(v).map((s) =>
+      h(
+        'td',
+        {},
+        h('strong', {}, `${s.passed}/${n} passed`),
+        h('br'),
+        h('span', { class: 'muted small' }, `avg Test ${s.avgTest ?? '–'} · ${s.learned} did Learn`),
+      ),
+    ),
+  );
+}
+
+async function renderOverview(): Promise<void> {
+  view = await api<ClassView>('GET', '/class', key);
+  const v = view;
+  const n = v.students.length;
+  if (n === 0) {
+    panel.replaceChildren(
+      h(
+        'div',
+        { class: 'empty' },
+        h('p', {}, `No students yet. Students join from the game with class code ${v.code}.`),
+      ),
+    );
+    return;
+  }
+  const all = summarize(v);
+  const certs = v.cells.filter((c) => c.mode === 'test' && c.passed).length;
+  // Ranked by pass rate, then by how many have started, so the strongest and weakest lessons stand out.
+  const ranked = [...all].sort((a, b) => b.passed - a.passed || b.tried - a.tried);
+  const pct = (x: number) => `${(x / n) * 100}%`;
+  const rows = ranked.map((s) =>
+    h(
+      'tr',
+      {},
+      h('th', { scope: 'row' }, LESSON_TITLES[s.lesson], v.settings.open[s.lesson] ? '' : ' 🔒'),
+      h('td', { class: 'num' }, `${s.passed} of ${n}`),
+      h('td', { class: 'num' }, String(s.tried - s.passed)),
+      h('td', { class: 'num' }, String(n - s.tried)),
+      h('td', { class: 'num' }, s.avgTest === null ? '–' : `${s.avgTest}%`),
+      h(
+        'td',
+        { class: 'bar-cell', 'aria-hidden': 'true' },
+        h(
+          'div',
+          {
+            class: 'stack',
+            title: `${s.passed} passed, ${s.tried - s.passed} working on it, ${n - s.tried} not started`,
+          },
+          s.passed ? h('div', { class: 'seg passed', style: `width:${pct(s.passed)}` }) : null,
+          s.tried - s.passed ? h('div', { class: 'seg tried', style: `width:${pct(s.tried - s.passed)}` }) : null,
+        ),
+      ),
+    ),
+  );
+  panel.replaceChildren(
+    h(
+      'div',
+      { class: 'stats' },
+      h('div', { class: 'stat' }, h('span', { class: 'stat-num' }, String(n)), h('span', {}, 'students')),
+      h(
+        'div',
+        { class: 'stat' },
+        h('span', { class: 'stat-num' }, String(certs)),
+        h('span', {}, 'certificates earned'),
+      ),
+      h(
+        'div',
+        { class: 'stat' },
+        h('span', { class: 'stat-num' }, String(all.filter((s) => s.passed === n).length)),
+        h('span', {}, 'lessons passed by everyone'),
+      ),
+    ),
+    h('h2', { class: 'section' }, 'Pass rate by lesson'),
+    h(
+      'p',
+      { class: 'legend small' },
+      h('span', { class: 'key passed' }),
+      ' Passed the Test ',
+      h('span', { class: 'key tried' }),
+      ' Working on it (any run, no pass yet) ',
+      h('span', { class: 'key empty' }),
+      ' Not started',
+    ),
+    h(
+      'div',
+      { class: 'scroll' },
+      h(
+        'table',
+        { class: 'chart overview' },
+        h(
+          'thead',
+          {},
+          h(
+            'tr',
+            {},
+            h('th', { scope: 'col' }, 'Lesson'),
+            h('th', { scope: 'col', class: 'num' }, 'Passed'),
+            h('th', { scope: 'col', class: 'num' }, 'Working'),
+            h('th', { scope: 'col', class: 'num' }, 'Not started'),
+            h('th', { scope: 'col', class: 'num' }, 'Avg Test'),
+            h('th', { scope: 'col' }, h('span', { class: 'sr' }, 'Bar')),
+          ),
+        ),
+        h('tbody', {}, ...rows),
+      ),
+    ),
   );
 }
 

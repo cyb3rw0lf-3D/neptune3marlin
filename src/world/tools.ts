@@ -307,6 +307,84 @@ export function buildItemModel(id: string): ItemModel {
         b.box(0.035, 0.012, 0.06, C.black).box(0.02, 0.004, 0.02, C.white, { p: [0, 0.007, 0] });
         col = sphereCollider(0.05);
         break;
+      // --- Stage 6 ---
+      case 'towel':
+        b.box(0.14, 0.02, 0.1, 0x4f8fd8);
+        col = boxCollider(0.16, 0.06, 0.12);
+        break;
+      case 'wiper-blades':
+        b.box(0.02, 0.02, 0.26, C.black, { p: [-0.015, 0, 0] }).box(0.02, 0.02, 0.26, C.black, { p: [0.015, 0, 0] });
+        col = boxCollider(0.08, 0.06, 0.3);
+        break;
+      case 'bulb-h11':
+      case 'bulb-9005':
+        b.cyl(0.012, 0.012, 0.03, 8, 0xe9edf1, { p: [0, 0.03, 0] })
+          .cyl(0.018, 0.018, 0.025, 8, id === 'bulb-h11' ? C.black : C.darkSteel)
+          .box(0.02, 0.02, 0.03, C.black, { p: [id === 'bulb-h11' ? 0.02 : 0, -0.02, 0] });
+        col = sphereCollider(0.05);
+        break;
+      case 'cabin-filter-new':
+        b.box(0.18, 0.03, 0.14, C.white).box(0.04, 0.032, 0.012, C.black, { p: [0, 0, 0.05] });
+        col = boxCollider(0.2, 0.06, 0.16);
+        break;
+      case 'spill-funnel':
+        b.cyl(0.06, 0.015, 0.08, 10, C.safetyYellow).cyl(0.015, 0.015, 0.04, 6, C.black, { p: [0, -0.06, 0] });
+        col = sphereCollider(0.07);
+        break;
+      case 'coolant-oat':
+      case 'coolant-green':
+        b.box(0.08, 0.16, 0.05, id === 'coolant-oat' ? 0xe5559a : 0x3fbf4a, { p: [0, 0.02, 0] }).box(
+          0.03,
+          0.03,
+          0.03,
+          C.black,
+          { p: [0.02, 0.115, 0] },
+        );
+        col = boxCollider(0.1, 0.2, 0.08);
+        break;
+      case 'refractometer':
+        b.cyl(0.012, 0.012, 0.14, 8, C.darkSteel, { r: [0, 0, Math.PI / 2] }).box(0.03, 0.02, 0.03, C.chrome, {
+          p: [0.07, 0.01, 0],
+        });
+        col = boxCollider(0.18, 0.05, 0.05);
+        break;
+      case 'align-heads':
+        b.box(0.12, 0.12, 0.01, C.white)
+          .box(0.06, 0.06, 0.012, C.black)
+          .cyl(0.01, 0.01, 0.08, 6, C.steel, {
+            p: [0, -0.08, 0],
+          });
+        col = boxCollider(0.14, 0.2, 0.06);
+        break;
+      case 'wheel-holder':
+        b.box(0.03, 0.03, 0.3, C.safetyYellow).box(0.03, 0.08, 0.03, C.black, { p: [0, 0.03, 0.13] });
+        col = boxCollider(0.06, 0.12, 0.32);
+        break;
+      case 'wrench-21':
+        b.box(0.024, 0.01, 0.22, C.chrome).box(0.05, 0.012, 0.03, C.chrome, { p: [0, 0, -0.12] });
+        col = boxCollider(0.07, 0.05, 0.28);
+        break;
+      case 'coupler-low':
+      case 'coupler-high':
+        b.cyl(0.018, 0.018, 0.06, 8, id === 'coupler-low' ? 0x2f6fd6 : C.safetyRed).cyl(
+          0.007,
+          0.007,
+          0.12,
+          6,
+          C.black,
+          {
+            p: [0, -0.08, 0],
+          },
+        );
+        col = boxCollider(0.06, 0.18, 0.06);
+        break;
+      case 'vent-thermo':
+        b.cyl(0.004, 0.004, 0.13, 6, C.chrome, { p: [0, -0.04, 0] }).cyl(0.025, 0.025, 0.012, 12, C.white, {
+          p: [0, 0.035, 0],
+          r: [Math.PI / 2, 0, 0],
+        });
+        col = boxCollider(0.06, 0.16, 0.05);
+        break;
       default:
         b.box(0.05, 0.05, 0.05, C.white);
         col = boxCollider(0.08, 0.08, 0.08);

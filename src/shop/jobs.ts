@@ -1,4 +1,6 @@
+import type { AcVariant } from '../lessons/content/ac-check';
 import type { BatteryVariant } from '../lessons/content/battery';
+import type { CoolantVariant } from '../lessons/content/coolant-flush';
 import type { ObdVariant } from '../lessons/content/obd2';
 import type { LessonId, VehicleId } from '../lessons/engine/types';
 import type { VehicleSpec } from '../vehicles/specs';
@@ -33,6 +35,8 @@ export interface JobTemplate {
   /** Parts and labor added once the work shows what the car needed. */
   partsAfter?: (variant: unknown, vehicle: VehicleSpec) => QuoteLine[];
   extras: ExtraId[];
+  /** A shop upgrade the job needs (the alignment rack). */
+  needs?: 'rack';
 }
 
 const obd = (code: ObdVariant['code']) => (v: unknown) => (v as ObdVariant).code === code;
@@ -294,6 +298,74 @@ export const JOBS: JobTemplate[] = [
     service: 'hv-disable',
     extras: [],
   },
+  {
+    id: 'day-one',
+    lesson: 'wipers-bulbs',
+    vehicles: ['sedan', 'pickup', 'ev'],
+    customer: 'maya',
+    title: 'Wipers, bulb & cabin filter',
+    complaint: 'My wipers streak, one headlight is out, and the air from the vents smells a bit musty.',
+    questions: [
+      { q: 'Which headlight is out?', a: 'The driver side. I noticed it in the garage.', helpful: true },
+      { q: 'When were the wipers last changed?', a: 'Honestly, I think never.', helpful: true },
+      { q: 'Do you drive at night a lot?', a: 'Every day after work, so I really need that light.', helpful: false },
+    ],
+    service: 'refresh',
+    extras: ['tires'],
+  },
+  {
+    id: 'coolant-due',
+    lesson: 'coolant-flush',
+    vehicles: ['sedan', 'pickup'],
+    customer: 'dale',
+    title: 'Coolant flush',
+    complaint:
+      'The maintenance schedule says the coolant is due at this mileage, and my heater takes forever to warm up.',
+    questions: [
+      { q: 'Have you seen any leaks or puddles?', a: 'No puddles, but the reservoir looks a bit low.', helpful: true },
+      { q: 'Does the temperature gauge ever run high?', a: 'No, it stays in the middle.', helpful: true },
+      { q: 'Do you have a long commute?', a: 'Forty minutes each way, mostly highway.', helpful: false },
+    ],
+    service: 'coolant-service',
+    match: (v) => (v as CoolantVariant).old !== 'oily',
+    extras: ['wipers'],
+  },
+  {
+    id: 'pulls-left',
+    lesson: 'alignment',
+    vehicles: ['sedan', 'pickup', 'ev'],
+    customer: 'theo',
+    title: 'Alignment',
+    complaint: 'The car pulls to one side and the front tires are wearing funny on the edges.',
+    questions: [
+      { q: 'Did you hit a curb or a big pothole?', a: 'Yes, a nasty pothole a couple of weeks ago.', helpful: true },
+      {
+        q: 'Is the steering wheel straight when you drive?',
+        a: 'It is a little crooked, now that you ask.',
+        helpful: true,
+      },
+      { q: 'Do you like road trips?', a: 'Love them. That is why I want this fixed.', helpful: false },
+    ],
+    service: 'alignment',
+    needs: 'rack',
+    extras: [],
+  },
+  {
+    id: 'ac-warm',
+    lesson: 'ac-check',
+    vehicles: ['sedan', 'pickup', 'ev'],
+    customer: 'rosa',
+    title: 'A/C check',
+    complaint: 'The air conditioning blows cool at first, but it is warm by the afternoon.',
+    questions: [
+      { q: 'Does it get worse in traffic or on the highway?', a: 'Worse sitting in traffic, I think.', helpful: true },
+      { q: 'Do you hear the A/C click on?', a: 'I hear a click, then it cycles a lot.', helpful: true },
+      { q: 'What music do you play with the windows up?', a: 'Mostly podcasts, honestly.', helpful: false },
+    ],
+    service: 'ac-diagnosis',
+    match: (v) => (v as AcVariant).fault !== 'normal',
+    extras: ['wipers'],
+  },
 ];
 
 export function jobById(id: string): JobTemplate | undefined {
@@ -303,9 +375,9 @@ export function jobById(id: string): JobTemplate | undefined {
 /** The reputation tier a job needs on a vehicle. */
 export function tierNeeded(job: JobTemplate, vehicle: VehicleId): number {
   if (vehicle === 'ev') return 4;
-  if (job.lesson === 'obd2' || job.lesson === 'spark-plugs') return 3;
-  if (vehicle === 'pickup') return 2;
-  if (job.lesson === 'brakes' || job.lesson === 'battery') return 1;
+  if (job.lesson === 'obd2' || job.lesson === 'spark-plugs' || job.lesson === 'ac-check') return 3;
+  if (vehicle === 'pickup' || job.lesson === 'alignment') return 2;
+  if (job.lesson === 'brakes' || job.lesson === 'battery' || job.lesson === 'coolant-flush') return 1;
   return 0;
 }
 
@@ -355,6 +427,12 @@ export const COMEBACK_NOTES: Record<string, string> = {
   'plugs.cross_thread': 'The engine is misfiring, and it makes a ticking sound.',
   'plugs.no_blow_out': 'The engine is misfiring again.',
   'plugs.gap.wrong_call': 'The engine stumbles when I accelerate.',
+  'wipers.filter.backwards': 'The vents whistle, and the air still smells musty.',
+  'coolant.bleed.skipped': 'The temperature gauge climbed into the red on the highway.',
+  'coolant.old.misread': 'Another shop says my coolant has oil in it. Why did nobody tell me?',
+  'alignment.wheel.not_centered': 'The car drives straight now, but the steering wheel is crooked.',
+  'alignment.jam.undertorque': 'The steering feels loose, and the car wanders again.',
+  'ac.diagnosis.wrong': 'The A/C still blows warm in the afternoon.',
 };
 
 /** Found-it checks: the inspection item, the service it sells, and any upgrade that sale needs. */

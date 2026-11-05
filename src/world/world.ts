@@ -19,7 +19,7 @@ import { boxCollider, collider, type Registry, sphereCollider } from '../interac
 import { OIL_GRADES, oilTarget } from '../lessons/content/oil-change';
 import type { VehicleId } from '../lessons/engine/types';
 import { CROUCH_EYE, DESKTOP_EYE } from '../locomotion/locomotion';
-import { sign } from '../ui/panel';
+import { Panel, sign } from '../ui/panel';
 import { VEHICLES, WHEELS, type WheelPos } from '../vehicles/specs';
 import { Vehicle } from '../vehicles/vehicle';
 import { Customer } from './customer';
@@ -74,6 +74,8 @@ export interface StageSetup {
   trayItem?: string;
   /** High-voltage safety kit, barriers and the fob lockbox for EV work. */
   evKit?: boolean;
+  /** Alignment console beside the lift, with its before and after screens. */
+  align?: { before: string[]; after: string[] };
 }
 
 /** Tools that live on the cart. A lesson shows up to nine of them. */
@@ -106,6 +108,21 @@ export const ALL_ITEMS = [
   'dielectric-grease',
   'cat3-meter',
   'loto-tag',
+  'towel',
+  'wiper-blades',
+  'bulb-h11',
+  'bulb-9005',
+  'cabin-filter-new',
+  'spill-funnel',
+  'coolant-oat',
+  'coolant-green',
+  'refractometer',
+  'align-heads',
+  'wheel-holder',
+  'wrench-21',
+  'coupler-low',
+  'coupler-high',
+  'vent-thermo',
 ];
 
 /** Replacement parts that can sit on the cart's parts tray. */
@@ -168,6 +185,9 @@ export class World {
   readonly exhaustReel = buildExhaustReel();
   readonly exhaustCable = new Cable('black', 0.045);
   readonly evKit = buildEvKitTable();
+  /** Alignment console: a monitor on a stand that shows the rack's readings. */
+  readonly alignConsole = new Group();
+  readonly alignScreen = new Panel('align-screen', 0.56, 0.36, 1000);
   readonly barriers = [buildBarrier(), buildBarrier()];
   readonly gloves = { a: buildGloves(), b: buildGloves(0xd8462a), protectors: buildGloves(0x8a5a32) };
   readonly lockbox: Mesh;
@@ -259,6 +279,7 @@ export class World {
     this.scene.add(this.exhaustReel, this.exhaustCable.mesh);
     // EV safety: kit table, barriers, gloves and the fob lockbox on the bench.
     this.scene.add(this.evKit);
+    this.buildAlignConsole();
     this.evKit.add(this.gloves.a, this.gloves.b, this.gloves.protectors);
     this.gloves.a.position.set(-0.25, 0.84, -0.12);
     this.gloves.b.position.set(-0.25, 0.84, 0.13);
@@ -738,6 +759,9 @@ export class World {
     this.registry.setItemAvailable('old-plug', false);
 
     // EV kit beside the front of the car, barriers ready to place.
+    this.alignConsole.visible = !!stage.align;
+    this.alignConsole.position.set(this.carX + L.front + 1.05, 0, 1.3);
+    this.showAlign(stage.align ? 'idle' : null);
     const ev = !!stage.evKit;
     this.evKit.visible = ev;
     this.lockbox.visible = ev;
@@ -957,6 +981,10 @@ export class World {
       boxCollider(0.14, 0.26, 0.12),
     );
     reg.addTarget('recycle-drum', 'Used oil recycling drum', this.recycleDrum, boxCollider(0.7, 1.2, 0.7));
+    const measure = new Object3D();
+    measure.position.set(0, 1.3, 0);
+    this.alignConsole.add(measure);
+    reg.addTarget('align-console', 'Alignment console (MEASURE)', measure, boxCollider(0.6, 0.45, 0.25));
     reg.addTarget('core-shelf', 'Core return pallet', this.coreShelf, boxCollider(0.8, 0.3, 0.6));
     reg.addTarget('jack-handle', 'Floor jack handle', this.jack.grip, sphereCollider(0.1));
     reg.addTarget('jack-release', 'Floor jack release (twist the handle)', this.jack.grip, sphereCollider(0.09));
@@ -1066,6 +1094,7 @@ export class World {
       ['exhaust', 'Tailpipe', [x + L.rear - 0.55, 0, 0.95], [x + (L.ice?.tailpipe[0] ?? L.rear), 0.3, 0.3]],
       ['ev-kit', 'HV safety kit', [nose + 1.0, 0, -L.halfWidth + 0.15], [nose + 1.0, 0.85, -L.halfWidth - 0.75]],
       // Looks a little to the customer's side so they stand beside the counter dialog, not behind it.
+      ['align', 'Alignment console', [nose + 0.45, 0, 0.55], [nose + 1.05, 1.3, 1.3]],
       ['counter', 'Service counter', [COUNTER.x, 0, COUNTER.z + 0.42], [CUSTOMER_SPOT.x - 1.0, 1.65, CUSTOMER_SPOT.z]],
     ];
   }
@@ -1125,6 +1154,7 @@ export class World {
     this.setSpotEnabled('hood', !this.stage.donor && !this.stage.jack);
     this.setSpotEnabled('exhaust', !!this.stage.exhaust);
     this.setSpotEnabled('ev-kit', !!this.stage.evKit);
+    this.setSpotEnabled('align', !!this.stage.align);
     // The counter is only for talking to Shop customers between jobs.
     this.setSpotEnabled('counter', this.counterOpen);
   }
@@ -1384,5 +1414,48 @@ export class World {
     root.position.z = z;
     // The car's nose is local +x, so it turns to face the way it is driving.
     if (Math.abs(dx) + Math.abs(dz) > 1e-6) root.rotation.y = Math.atan2(-dz, dx);
+  }
+
+  // --- alignment console ---
+
+  private buildAlignConsole(): void {
+    const stand = build()
+      .box(0.5, 0.05, 0.5, C.darkSteel, { p: [0, 0.025, 0] })
+      .cyl(0.04, 0.04, 1.1, 8, C.steel, { p: [0, 0.6, 0] })
+      .box(0.62, 0.42, 0.06, C.black, { p: [0, 1.3, 0] })
+      .mesh('align-console');
+    this.alignConsole.add(stand);
+    // The screen faces the "align" spot (toward the car's front corner).
+    const screen = this.alignScreen.mesh;
+    screen.position.set(0, 1.3, 0.035);
+    const mat = screen.material as MeshBasicMaterial;
+    mat.depthTest = true;
+    screen.userData.worldUi = true;
+    screen.renderOrder = 3;
+    this.alignConsole.add(screen);
+    this.alignConsole.rotation.y = Math.atan2(-0.6, -0.75);
+    this.alignConsole.visible = false;
+    this.scene.add(this.alignConsole);
+    this.registry.addOccluder(stand);
+  }
+
+  /** Shows the alignment readings: idle, before the adjustment, or after it. */
+  showAlign(which: 'idle' | 'before' | 'after' | null): void {
+    const lines =
+      which === 'before' || which === 'after'
+        ? (this.stage.align?.[which] ?? [])
+        : ['Press MEASURE to read the angles.'];
+    this.alignScreen.setDraw((p) => {
+      p.background(14, '#0d1620');
+      p.text('ALIGNMENT', 18, 12, { size: 26, bold: true, color: '#7fd3ff' });
+      lines.forEach((line, i) => {
+        const bad = line.includes('✗');
+        p.text(line, 18, 56 + i * 48, {
+          size: 24,
+          color: bad ? '#ff9a7a' : i === 0 || i === lines.length - 1 ? '#a9bac7' : '#e8f4ff',
+          maxWidth: p.widthPx - 36,
+        });
+      });
+    });
   }
 }

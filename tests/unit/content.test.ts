@@ -37,8 +37,8 @@ const runs = LESSONS.filter((l) => l.available).flatMap((lesson) =>
 );
 
 describe('lesson content', () => {
-  it('has all eight lessons, all available', () => {
-    expect(LESSONS).toHaveLength(8);
+  it('has all twelve lessons, all available', () => {
+    expect(LESSONS).toHaveLength(12);
     expect(LESSONS.every((l) => l.available)).toBe(true);
   });
 

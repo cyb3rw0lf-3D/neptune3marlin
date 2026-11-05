@@ -10,7 +10,11 @@ export type LessonId =
   | 'inspection'
   | 'obd2'
   | 'spark-plugs'
-  | 'ev-safety';
+  | 'ev-safety'
+  | 'wipers-bulbs'
+  | 'coolant-flush'
+  | 'alignment'
+  | 'ac-check';
 
 export type Mode = 'learn' | 'practice' | 'test';
 export type VehicleId = 'sedan' | 'pickup' | 'ev';
@@ -71,7 +75,8 @@ export type ConsequenceId =
   | 'fan-spin'
   | 'hot-steam'
   | 'wheel-spin'
-  | 'co-alarm';
+  | 'co-alarm'
+  | 'glass-crack';
 
 export interface Measure {
   quantity: Quantity;
@@ -190,7 +195,8 @@ export type FxName =
   | 'fob-lockbox'
   | 'sd-out'
   | 'loto'
-  | 'wait';
+  | 'wait'
+  | 'align-read';
 
 export interface Effect {
   fx: FxName;
@@ -257,6 +263,8 @@ export interface LessonStage {
   scan?: Record<string, string[]>;
   trayItem?: string;
   evKit?: boolean;
+  /** Alignment console screens for this run. */
+  align?: { before: string[]; after: string[] };
 }
 
 export interface LessonDef<V = unknown> {

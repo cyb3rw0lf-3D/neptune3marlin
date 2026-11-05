@@ -147,6 +147,20 @@ describe('syncing from the game', () => {
     expect(list[0]).toMatchObject({ nickname: 'Sam', lesson: 'oil-change', score: 92, passed: true });
   });
 
+  it('accepts runs from every lesson, including the Stage 6 ones', async () => {
+    const c = await newClass();
+    const s = await joinAs(c.code, 'Sam');
+    const lessons = ['wipers-bulbs', 'coolant-flush', 'alignment', 'ac-check'] as const;
+    const res = await ok<SyncResponse>(
+      await call('POST', '/sync', {
+        token: s.token,
+        body: { attempts: lessons.map((lesson) => attempt({ lesson, mistakes: [] })) },
+      }),
+    );
+    expect(res.accepted).toBe(4);
+    expect(res.settings.open['ac-check']).toBe(true);
+  });
+
   it('rejects malformed, oversized and unauthenticated uploads', async () => {
     const c = await newClass();
     const s = await joinAs(c.code, 'Sam');
@@ -259,8 +273,8 @@ describe('teacher views', () => {
     );
     expect(text.split('\r\n').filter(Boolean)).toHaveLength(5);
     const grades = await (await call('GET', '/export/grades.csv', { token: c.teacherKey })).text();
-    expect(grades).toContain('Sam,95,,,,,,,,1');
-    expect(grades).toContain('Ana,,,60,,,,,,0');
+    expect(grades).toContain(`Sam,95${','.repeat(11)},1`);
+    expect(grades).toContain(`Ana,,,60${','.repeat(9)},0`);
     expect((await call('GET', '/export/shop.csv', { token: c.teacherKey })).status).toBe(200);
     expect(csvCell('=HYPERLINK("x")')).toBe(`"'=HYPERLINK(""x"")"`);
     expect(csvCell('-1+2')).toBe(`'-1+2`);
