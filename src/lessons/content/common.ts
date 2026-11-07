@@ -29,6 +29,16 @@ export const LIFT_NOT_LOCKED: MistakeDef = {
   consequence: 'car-drop',
 };
 
+/** For a step that takes a fitted tool off the car, raised if the student tries to finish first. */
+export function leftOn(lesson: string, tool: string, what: string): MistakeDef {
+  return {
+    code: `${lesson}.${tool}.left_on`,
+    kind: 'order',
+    label: `Tried to finish with the ${what} still on the car`,
+    explain: `Take the ${what} off first. A tool left on a car goes home with the customer, or falls off on the road. Everything you fit to the car comes off again before you call the job done.`,
+  };
+}
+
 const PPE_WHY =
   'Nitrile gloves keep used oil off your skin. It contains chemicals you should not soak into your hands every day.';
 

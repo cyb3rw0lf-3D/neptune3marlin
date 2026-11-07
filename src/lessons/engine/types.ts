@@ -246,6 +246,13 @@ export interface StepDef {
   tag?: Choice;
   /** Marked as a safety step on the checklist. */
   safety?: boolean;
+  /**
+   * The tool stays on the car: a copy is left at each target as it is done, and the
+   * tool leaves the hand once no other target of this step needs it.
+   */
+  fit?: boolean;
+  /** Fitted tools this step takes off the car; they go back to the cart when it completes. */
+  unfit?: ItemId[];
 }
 
 /** How a lesson wants the bay set up (see World.applyStage). */

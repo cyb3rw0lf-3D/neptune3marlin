@@ -2,7 +2,7 @@ import { pick } from '../../core/random';
 import { formatBoth, type UnitSystem } from '../../core/units';
 import type { VehicleSpec } from '../../vehicles/specs';
 import { HAND, type LessonDef, type MistakeDef, type StepDef } from '../engine/types';
-import { liftSteps, lowerStep } from './common';
+import { leftOn, liftSteps, lowerStep } from './common';
 
 export interface AlignVariant {
   /** The front wheel whose toe is out of spec. */
@@ -100,6 +100,7 @@ function steps(vehicle: VehicleSpec, v: AlignVariant, units: UnitSystem): StepDe
       targets: ['steering-wheel'],
       gesture: { kind: 'press' },
       skipMistake: NOT_CENTERED,
+      fit: true,
       effects: [{ fx: 'inspect' }],
     },
     {
@@ -110,6 +111,7 @@ function steps(vehicle: VehicleSpec, v: AlignVariant, units: UnitSystem): StepDe
       item: 'align-heads',
       targets: ['hub-FL', 'hub-FR', 'hub-RL', 'hub-RR'],
       gesture: { kind: 'press' },
+      fit: true,
       effects: [{ fx: 'inspect' }],
     },
     {
@@ -279,6 +281,18 @@ function steps(vehicle: VehicleSpec, v: AlignVariant, units: UnitSystem): StepDe
       },
     },
     {
+      id: 'heads-off',
+      label: 'Unclamp the alignment targets',
+      say: 'Unclamp the alignment target from each wheel and put them back on the cart.',
+      hint: 'Four wheels, four targets to take off.',
+      item: HAND,
+      targets: ['hub-FL', 'hub-FR', 'hub-RL', 'hub-RR'],
+      gesture: { kind: 'press' },
+      skipMistake: leftOn('alignment', 'targets', 'alignment targets'),
+      unfit: ['align-heads'],
+      effects: [{ fx: 'inspect' }],
+    },
+    {
       id: 'holder-off',
       label: 'Remove the steering wheel holder',
       say: 'Take the steering wheel holder off. The job is done.',
@@ -287,6 +301,9 @@ function steps(vehicle: VehicleSpec, v: AlignVariant, units: UnitSystem): StepDe
       item: HAND,
       targets: ['steering-wheel'],
       gesture: { kind: 'press' },
+      requires: ['heads-off'],
+      skipMistake: leftOn('alignment', 'holder', 'steering wheel holder'),
+      unfit: ['wheel-holder'],
       effects: [{ fx: 'inspect' }],
     },
   );

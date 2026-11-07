@@ -107,6 +107,28 @@ describe('lesson content', () => {
     }
   });
 
+  it('every tool fitted to the car is taken off again later in the lesson', () => {
+    for (const { lesson, vehicle, units, seed } of runs) {
+      const steps = lesson.steps(vehicle, lesson.variant(createRng(seed), vehicle), units);
+      const on = new Set<string>();
+      for (const step of steps) {
+        if (step.fit) {
+          const items = step.targetItems ? Object.values(step.targetItems) : [step.item];
+          for (const item of items) {
+            expect(item, `${lesson.id}/${step.id} fits a bare hand`).not.toBe(HAND);
+            on.add(item);
+          }
+        }
+        for (const item of step.unfit ?? []) {
+          expect(on.has(item), `${lesson.id}/${step.id} removes ${item}, which was never fitted`).toBe(true);
+          expect(step.skipMistake, `${lesson.id}/${step.id} needs a left-on mistake`).toBeDefined();
+          on.delete(item);
+        }
+      }
+      expect([...on], `${lesson.id} on ${vehicle.id} leaves tools on the car`).toEqual([]);
+    }
+  });
+
   it('a stable mistake code always means the same thing', () => {
     const labels = new Map<string, string>();
     for (const { lesson, vehicle, units, seed } of runs) {

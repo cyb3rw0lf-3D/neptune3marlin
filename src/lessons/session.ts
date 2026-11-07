@@ -94,6 +94,9 @@ const MODE_NAME: Record<Mode, string> = { learn: 'Learn', practice: 'Practice', 
  * Runs one lesson attempt in the world: sets the scene up, feeds actions to the
  * LessonRunner, applies effects, plays consequences, narrates and grades.
  */
+/** How far a fitted tool sits out from its target along the target's local z (the axle, for wheels). */
+const FIT_OUTSET: Partial<Record<ItemId, number>> = { 'align-heads': 0.07 };
+
 export class LessonSession implements InteractionHooks {
   runner: LessonRunner | null = null;
   lesson: LessonDef | null = null;
@@ -163,6 +166,7 @@ export class LessonSession implements InteractionHooks {
     this.busy = false;
 
     d.interaction().releaseAll(d.pointers());
+    this.clearFitted();
     d.markers.hideTag();
     d.markers.hideReading();
     d.world.setVehicle(vehicleId);
@@ -203,6 +207,8 @@ export class LessonSession implements InteractionHooks {
   private stage: LessonStage = {};
   private opts: RunOptions = {};
   private variant: unknown = null;
+  /** Copies of tools fitted to the car, by tool. */
+  private fitted = new Map<ItemId, Object3D[]>();
 
   /** Visible faults for the inspection lesson (others show up in readings). */
   private applyFaults(faults: string[]): void {
@@ -232,6 +238,7 @@ export class LessonSession implements InteractionHooks {
   /** Ends the run without going back to the menu (Shop mode moves on to the next customer). */
   quietQuit(): void {
     this.stopNarration();
+    this.clearFitted();
     this.d.hud.closeDialog();
     this.d.markers.hideTag();
     this.d.hud.showClipboard(null);
@@ -598,6 +605,8 @@ export class LessonSession implements InteractionHooks {
     if (v.kind !== 'done') return;
     this.d.markers.hideReading();
     for (const e of v.effects) this.applyEffect(e, item, pointer);
+    if (v.step.fit && v.target && item !== HAND) this.fitTool(item, v.target, v.step, v.stepDone);
+    if (v.stepDone) for (const id of v.step.unfit ?? []) this.unfitTool(id);
     if (v.reading && v.target) {
       const anchor = this.d.registry.targets.get(v.target)?.anchor;
       if (anchor) {
@@ -648,6 +657,48 @@ export class LessonSession implements InteractionHooks {
   private guideNextQuietly(): void {
     const next = this.runner?.current;
     if (next && !next.choice && this.mode === 'learn') this.guide(next);
+  }
+
+  /** Leaves a copy of the tool on the car at a target, and takes it out of the hand once it is not needed. */
+  private fitTool(item: ItemId, target: TargetId, step: StepDef, stepDone: boolean): void {
+    const reg = this.d.registry;
+    const entry = reg.items.get(item);
+    const anchor = reg.targets.get(target)?.anchor;
+    if (!entry || !anchor) return;
+    const copy = entry.object.clone(true);
+    copy.position.set(0, 0, 0);
+    // Some tools sit proud of their target, e.g. alignment targets clamp to the outside of the wheel.
+    const proud = FIT_OUTSET[item];
+    if (proud) copy.position.z = Math.sign(anchor.position.z || 1) * proud;
+    copy.quaternion.identity();
+    copy.scale.setScalar(1);
+    copy.visible = true;
+    // The cloned collider is not registered, but it is removed so nothing pickable rides along.
+    const colIndex = entry.object.children.indexOf(entry.collider);
+    if (colIndex >= 0) copy.children[colIndex]?.removeFromParent();
+    anchor.add(copy);
+    const list = this.fitted.get(item) ?? [];
+    list.push(copy);
+    this.fitted.set(item, list);
+    const stillNeeded =
+      !stepDone && (!step.targetItems || Object.values(step.targetItems).filter((i) => i === item).length > 1);
+    if (stillNeeded) return;
+    this.d.interaction().consume(item);
+    reg.sendHome(item);
+    reg.setItemAvailable(item, false);
+  }
+
+  /** Takes a fitted tool's copies off the car and puts the tool back on the cart. */
+  private unfitTool(item: ItemId): void {
+    for (const copy of this.fitted.get(item) ?? []) copy.removeFromParent();
+    this.fitted.delete(item);
+    this.d.registry.sendHome(item);
+    this.d.registry.setItemAvailable(item, true);
+  }
+
+  private clearFitted(): void {
+    for (const list of this.fitted.values()) for (const copy of list) copy.removeFromParent();
+    this.fitted.clear();
   }
 
   private anchorPosition(target?: TargetId): Vector3 | null {

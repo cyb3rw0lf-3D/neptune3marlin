@@ -78,8 +78,7 @@ test('the alignment console shows the readings, measured with a real mouse click
   await begin(page, 'alignment', 'learn', 'sedan', 2);
   await call(page, 'autoplay', false, 'read');
   await call(page, 'teleport', 'align');
-  // Put the wheel targets down (Q), as a player would, since MEASURE is pressed by hand.
-  await page.keyboard.press('q');
+  // The wheel targets stay clamped on the wheels, so the hand is free for MEASURE.
   expect((await state(page)).held).toBeNull();
   await page.waitForTimeout(400);
   const pos = await call<{ x: number; y: number; inView: boolean }>(page, 'screenPos', 'align-console');
