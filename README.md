@@ -39,6 +39,11 @@ Every run produces a report card (score, safety errors, hints, time, each mistak
 | Coolant Flush & Bleed (cold-engine check, read the old coolant, drain into a pan, fill with the right type, bleed the air, freeze point) | Available |
 | Wheel Alignment Check (read the alignment console, center the steering wheel, set toe with the tie rod, torque the jam nut, refer camber) | Available |
 | A/C Performance Check (glasses on, blue and red couplers on the right ports, gauge pressures and vent temperature, diagnosis, EPA 609 rules) | Available |
+| Serpentine Belt (engine off and fob out, wear gauge, routing diagram, belt tool on the tensioner, route by the diagram, spin-check the tensioner) | Available |
+| Shocks & Struts Check (bounce test at each corner, ride height at the fender lips, leaks and mounts on the lift, replace in pairs, why a strut swap is its own job) | Available |
+| Brake Fluid Flush (moisture test strip, DOT type from the cap, bleed farthest wheel first with Valkyrie on the pedal, keep the reservoir topped up, firm pedal) | Available |
+| Transmission Fluid Check (pickup: hot dipstick check in Park; sedan: a sealed unit with no dipstick, checked at the check plug at the right fluid temperature on the scan tool) | Available |
+| EV Battery Coolant Service (isolate high voltage, drain, vacuum-test the loop, fill with approved low-conductivity coolant, scan-tool bleed routine, restore power) | Available |
 
 Three vehicles:
 - the **Aster S4** sedan;
@@ -47,7 +52,9 @@ Three vehicles:
 
 Each lesson runs on every vehicle it suits. Gas-engine lessons skip the EV, the EV safety lesson is EV-only, and the EV gets its own versions of tires, brakes, battery (12 V only) and inspection. Pick the vehicle on the lesson card for Learn and Practice. A Test picks one at random, so students learn the procedure, not one car.
 
-Whenever an engine runs indoors in the diagnostics and spark plug lessons, the shop's exhaust extraction hose goes on the tailpipe first; skipping it is a safety error.
+Whenever an engine runs indoors, the shop's exhaust extraction hose goes on the tailpipe first; skipping it is a safety error.
+
+Tools you fit to the car stay on it, like in a real shop: the alignment targets on the wheels, the towel under the wiper arm, the A/C gauge couplers, the bleeder bottle and the vacuum fill tool. Your hand is free for the next step, and a later step takes each one off. Trying to finish with a tool still on the car is a mistake.
 
 ## Shop mode
 
@@ -59,7 +66,7 @@ Shop mode turns the lessons into a career at your own repair shop. A shift has 3
 4. **The courtesy check.** Some cars get one extra look at the end, at the wipers or the tires. The part may really be worn, or it may be fine. Recommend real problems and the customer may approve the extra work. Flag a good part and Valkyrie calls it out as an upsell.
 5. **The bill.** Pay, tips for quick and clean work, and reputation changes are shown after every job. Mistakes that would leave a defect (a drain plug under-torqued, lug nuts out of spec) bring the car back next shift as an unpaid **comeback**.
 
-The end-of-shift **day sheet** totals income, parts, hints, tips and reputation. Reputation unlocks new work in tiers: sedan basics first, then brakes, battery and coolant, the pickup, diagnostics, spark plugs and A/C, and finally the Wren EV. Alignment jobs also need the shop's **alignment rack** upgrade. Money buys upgrades that change the work: a cordless impact wrench, a digital torque wrench (shows IN SPEC), a pro scan tool (repair tips for each code), a digital battery analyzer (state of health) and a wheel balancer (lets the shop sell tires).
+The end-of-shift **day sheet** totals income, parts, hints, tips and reputation. Reputation unlocks new work in tiers: sedan basics first; then brakes, battery, coolant, belts and shocks; then the pickup, brake flushes and transmission checks; then diagnostics, spark plugs and A/C; and finally the Wren EV. Alignment jobs also need the shop's **alignment rack** upgrade, and EV coolant jobs need the **EV service cart**. Money buys upgrades that change the work: a cordless impact wrench, a digital torque wrench (shows IN SPEC), a pro scan tool (repair tips for each code), a digital battery analyzer (state of health) and a wheel balancer (lets the shop sell tires).
 
 > Specs in the game are typical example values for fictional vehicles. Real service work always follows the manufacturer's service information.
 
