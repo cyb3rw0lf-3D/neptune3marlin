@@ -30,7 +30,12 @@ export type ServiceId =
   | 'refresh'
   | 'coolant-service'
   | 'alignment'
-  | 'ac-diagnosis';
+  | 'ac-diagnosis'
+  | 'belt-replace'
+  | 'brake-flush'
+  | 'suspension-check'
+  | 'trans-check'
+  | 'ev-coolant-service';
 
 export interface ServiceDef {
   id: ServiceId;
@@ -159,6 +164,43 @@ export const SERVICES: Record<ServiceId, ServiceDef> = {
     name: 'Four-wheel alignment',
     hours: { sedan: 1.0, pickup: 1.2, ev: 1.0 },
     blurb: 'Measure every angle on the rack and set front toe. Bent parts are quoted separately.',
+  },
+  'belt-replace': {
+    id: 'belt-replace',
+    name: 'Drive belt replacement',
+    hours: { sedan: 0.8, pickup: 1.0 },
+    parts: { sedan: [['Serpentine belt', 38]], pickup: [['Serpentine belt', 48]] },
+    blurb: 'Inspect the belt drive, replace the serpentine belt and check the tensioner.',
+  },
+  'brake-flush': {
+    id: 'brake-flush',
+    name: 'Brake fluid flush',
+    hours: { sedan: 0.8, pickup: 1.0, ev: 0.8 },
+    parts: {
+      sedan: [['DOT 4 brake fluid, 1 L', 14]],
+      pickup: [['DOT 4 brake fluid, 1 L', 14]],
+      ev: [['DOT 4 brake fluid, 1 L', 14]],
+    },
+    blurb: 'Test the fluid for water, then flush and bleed every wheel with fresh fluid.',
+  },
+  'suspension-check': {
+    id: 'suspension-check',
+    name: 'Shock & strut inspection',
+    hours: { sedan: 0.5, pickup: 0.5, ev: 0.5 },
+    blurb: 'Bounce test, ride height and a look at every shock and mount. Replacement is quoted after.',
+  },
+  'trans-check': {
+    id: 'trans-check',
+    name: 'Transmission fluid check',
+    hours: { sedan: 0.6, pickup: 0.4 },
+    blurb: 'Check the transmission fluid level and condition the maker’s way, and top up if low.',
+  },
+  'ev-coolant-service': {
+    id: 'ev-coolant-service',
+    name: 'EV battery coolant service',
+    hours: { ev: 1.5 },
+    parts: { ev: [['EV battery coolant, 2 gal', 85]] },
+    blurb: 'Isolate high voltage, replace the battery coolant, vacuum-test the loop and bleed it.',
   },
   'ac-diagnosis': {
     id: 'ac-diagnosis',

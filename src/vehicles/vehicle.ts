@@ -63,6 +63,11 @@ export interface VehicleOptions {
  * every part a lesson can target. The body shape and every anchor position
  * come from the vehicle's layout.
  */
+/** Bleeder screw at the back of each brake, hub-local: in the wheel arch just behind the tread. */
+function BLEEDER_AT(L: VehicleLayout, side: number): Vector3 {
+  return new Vector3(-(L.wheelR + 0.04), 0.06, side * (L.tireW / 2 - 0.03));
+}
+
 export class Vehicle {
   readonly root = new Group();
   readonly spec: VehicleSpec;
@@ -95,6 +100,10 @@ export class Vehicle {
   /** EV service disconnect plug and the lockout tag that replaces it. */
   serviceDisconnect: Mesh | null = null;
   lockoutTag: Mesh | null = null;
+  /** Serpentine belt (gas engines); hidden while it is off. */
+  serpentine: Mesh | null = null;
+  /** Oily mist on each shock body, shown for a leaking shock. */
+  readonly shockMist = {} as Record<WheelPos, Mesh>;
   /** Target ids this vehicle registered, so they can be removed on a swap. */
   private targetIds: TargetId[] = [];
 
@@ -135,6 +144,7 @@ export class Vehicle {
     this.buildServiceParts();
     for (const pos of WHEELS) this.buildWheel(pos);
     for (const pos of FRONT) this.buildFrontBrake(pos);
+    this.buildStage7Parts();
     this.buildLamps();
 
     const at = layout.at;
@@ -260,11 +270,6 @@ export class Vehicle {
       // air filter box
       .box(0.26, 0.13, 0.28, C.black, { p: at.airFilter })
       .box(0.2, 0.012, 0.02, C.chrome, { p: [at.airFilter[0], at.airFilter[1] + 0.07, at.airFilter[2] - 0.12] })
-      // serpentine belt around two pulleys
-      .torus(0.05, 0.008, C.black, { p: [at.belt[0] - 0.06, at.belt[1], at.belt[2]] }, 4, 12)
-      .torus(0.035, 0.008, C.black, { p: [at.belt[0] + 0.07, at.belt[1] + 0.03, at.belt[2]] }, 4, 12)
-      .box(0.13, 0.012, 0.012, C.black, { p: [at.belt[0], at.belt[1] + 0.045, at.belt[2]], r: [0, 0, 0.2] })
-      .box(0.13, 0.012, 0.012, C.black, { p: [at.belt[0], at.belt[1] - 0.035, at.belt[2]], r: [0, 0, 0.2] })
       // upper radiator hose
       .cyl(0.022, 0.022, 0.24, 8, C.black, { p: at.upperHose, r: [0, 0, Math.PI / 2] })
       // bare-metal engine lifting eye: the jump-start ground point
@@ -332,6 +337,103 @@ export class Vehicle {
 
   /** Coils, gas cap, vacuum hose, thermostat housing and tailpipe on gas engines. */
   /** Tie rods hang just below the floor pan so they can be seen from under the car. */
+  /** Stage 7 parts: belt and pulleys, shocks, bleeders, dipstick, check plug and EV coolant parts. */
+  private buildStage7Parts(): void {
+    const L = this.layout;
+    const at = L.at;
+    const b = build();
+    for (const pos of WHEELS) {
+      const p = this.shockPosition(pos);
+      b.cyl(0.035, 0.035, 0.22, 8, C.black, { p: [p.x, p.y, p.z] })
+        .cyl(0.012, 0.012, 0.14, 6, C.chrome, { p: [p.x, p.y + 0.17, p.z] })
+        .torus(0.02, 0.008, C.darkSteel, { p: [p.x, p.y - 0.12, p.z], r: [0, 0, 0] }, 4, 8);
+      const mist = build()
+        .box(0.074, 0.13, 0.074, 0x2a2418, { p: [p.x, p.y - 0.02, p.z] })
+        .mesh(`shock-mist:${pos}`);
+      mist.visible = false;
+      this.root.add(mist);
+      this.shockMist[pos] = mist;
+      // Bleeder screw on top of each brake, with its short line up into the wheel well.
+      const hub = this.wheels[pos].hub;
+      const bl = BLEEDER_AT(L, this.wheels[pos].side);
+      hub.add(
+        build()
+          .cyl(0.009, 0.009, 0.03, 6, C.copper, { p: [bl.x, bl.y, bl.z] })
+          .cyl(0.004, 0.004, 0.12, 4, C.darkSteel, { p: [bl.x + 0.02, bl.y - 0.07, bl.z], r: [0, 0, 0.3] })
+          .mesh(`bleeder:${pos}`),
+      );
+    }
+    // Belt routing decal on the radiator support.
+    b.box(0.15, 0.004, 0.11, C.white, { p: [at.hoodLatch[0] - 0.05, at.hoodLatch[1] + 0.03, -0.3] }).box(
+      0.1,
+      0.006,
+      0.004,
+      C.black,
+      { p: [at.hoodLatch[0] - 0.05, at.hoodLatch[1] + 0.033, -0.3] },
+    );
+    if (L.ice) {
+      const pulleys = this.beltPulleys();
+      const radius: Record<string, number> = {
+        'pulley-crank': 0.06,
+        'pulley-idler': 0.035,
+        'pulley-alternator': 0.045,
+        'belt-tensioner': 0.03,
+      };
+      for (const [name, p] of Object.entries(pulleys)) {
+        const r = radius[name] ?? 0.04;
+        b.cyl(r, r, 0.03, 12, C.darkSteel, { p: [p.x, p.y, p.z], r: [Math.PI / 2, 0, 0] }).cyl(
+          r * 0.4,
+          r * 0.4,
+          0.034,
+          6,
+          C.chrome,
+          { p: [p.x, p.y, p.z], r: [Math.PI / 2, 0, 0] },
+        );
+      }
+      // Tensioner arm.
+      const t = pulleys['belt-tensioner'] as Vector3;
+      b.box(0.1, 0.02, 0.02, C.steel, { p: [t.x + 0.04, t.y - 0.02, t.z - 0.02], r: [0, 0, -0.3] });
+      // The belt: straight runs between the pulleys, in routing order.
+      const belt = build();
+      const loop = Object.values(pulleys);
+      loop.forEach((a, i) => {
+        const c = loop[(i + 1) % loop.length] as Vector3;
+        const mid = a.clone().add(c).multiplyScalar(0.5);
+        const len = a.distanceTo(c);
+        const ang = Math.atan2(c.y - a.y, c.x - a.x);
+        belt.box(len, 0.008, 0.026, 0x111111, { p: [mid.x, mid.y, mid.z], r: [0, 0, ang] });
+      });
+      this.serpentine = belt.mesh('serpentine');
+      this.root.add(this.serpentine);
+      // Automatic transmission dipstick (red loop) and the transmission check plug underneath.
+      const d = this.transDipstickPosition();
+      b.torus(0.022, 0.006, C.safetyRed, { p: [d.x, d.y + 0.02, d.z], r: [0, Math.PI / 2, 0] }, 4, 10)
+        .cyl(0.008, 0.008, 0.25, 5, C.steel, { p: [d.x, d.y - 0.12, d.z] })
+        .cyl(0.02, 0.02, 0.02, 6, C.darkSteel, { p: [L.wheelX.front - 0.22, 0.2, -0.24], r: [Math.PI / 2, 0, 0] });
+    }
+    const ev = L.ev;
+    if (ev) {
+      b.cyl(0.02, 0.02, 0.03, 6, C.safetyYellow, {
+        p: [ev.pack[0] + ev.packSize[0] / 2 + 0.03, ev.pack[1] - 0.02, 0.3],
+      })
+        .cyl(0.018, 0.018, 0.2, 6, C.black, {
+          p: [at.coolant[0] - 0.1, at.coolant[1] - 0.05, at.coolant[2] - 0.06],
+          r: [Math.PI / 2, 0, 0],
+        })
+        .torus(
+          0.022,
+          0.005,
+          C.chrome,
+          {
+            p: [at.coolant[0] - 0.1, at.coolant[1] - 0.05, at.coolant[2] - 0.06],
+          },
+          4,
+          8,
+        );
+    }
+    this.root.add(b.mesh('stage7-parts'));
+  }
+
   private tieRodY(): number {
     return Math.min(this.layout.wheelR - 0.05, 0.2);
   }
@@ -655,6 +757,19 @@ export class Vehicle {
       this.anchor(`tie-rod-${side}`, [L.wheelX.front - 0.14, this.tieRodY(), z]);
       this.anchor(`jam-nut-${side}`, [L.wheelX.front - 0.14, this.tieRodY(), z - Math.sign(z) * 0.1]);
     }
+    // Stage 7: ride height and bounce points on each fender lip, shocks, brake bleeders.
+    for (const pos of WHEELS) {
+      const front = pos[0] === 'F';
+      const side = pos[1] === 'R' ? 1 : -1;
+      const x = front ? L.wheelX.front : L.wheelX.rear;
+      this.anchor(`fender-${pos}`, [x, 2 * L.wheelR + 0.1, side * (L.halfWidth - 0.03)]);
+      this.anchor(`shock-${pos}`, this.shockPosition(pos));
+      this.anchor(`bleeder-${pos}`, BLEEDER_AT(L, this.wheels[pos].side), this.wheels[pos].hub);
+    }
+    this.anchor('trans-dipstick', this.transDipstickPosition());
+    this.anchor('trans-check-plug', [L.wheelX.front - 0.22, 0.2, -0.24]);
+    this.anchor('belt-diagram', [at.hoodLatch[0] - 0.05, at.hoodLatch[1] + 0.05, -0.3]);
+    for (const [name, p] of Object.entries(this.beltPulleys())) this.anchor(name, p);
     const ice = L.ice;
     if (ice) {
       this.anchor('dlc', ice.dlc);
@@ -686,7 +801,37 @@ export class Vehicle {
       this.anchor('hv-test', [ev.serviceDisconnect[0], ev.serviceDisconnect[1] - 0.01, ev.serviceDisconnect[2] - 0.05]);
       this.anchor('cabin-filter', ev.cabinFilter);
       this.anchor('charge-port', ev.chargePort);
+      // The EV's OBD-II port sits under the dash like the gas cars'.
+      this.anchor('dlc', [at.driverSeat[0] + 0.3, at.startButton[1] + 0.02, at.driverSeat[2] + 0.02]);
+      this.anchor('ev-coolant-drain', [ev.pack[0] + ev.packSize[0] / 2 + 0.03, ev.pack[1] - 0.02, 0.3]);
+      this.anchor('ev-hose-clamp', [at.coolant[0] - 0.1, at.coolant[1] - 0.05, at.coolant[2] - 0.06]);
     }
+  }
+
+  /** Inboard of each wheel: the lower shock or strut body, below the floor line where it can be seen from under the car. */
+  private shockPosition(pos: WheelPos): Vector3 {
+    const L = this.layout;
+    const front = pos[0] === 'F';
+    const side = pos[1] === 'R' ? 1 : -1;
+    const x = (front ? L.wheelX.front : L.wheelX.rear) + (front ? -0.05 : 0.05);
+    return new Vector3(x, 0.16, side * (L.trackZ - L.tireW / 2 - 0.09));
+  }
+
+  /** The automatic transmission dipstick, at the back of the engine bay (passenger side). */
+  private transDipstickPosition(): Vector3 {
+    const L = this.layout;
+    return new Vector3(L.hood.pivot[0] + 0.2, L.at.dipstick[1] - 0.02, 0.28);
+  }
+
+  /** Serpentine belt pulleys around the belt anchor, in routing order. */
+  beltPulleys(): Record<string, Vector3> {
+    const [x, y, z] = this.layout.at.belt;
+    return {
+      'pulley-crank': new Vector3(x - 0.09, y - 0.03, z),
+      'pulley-idler': new Vector3(x, y + 0.07, z),
+      'pulley-alternator': new Vector3(x + 0.1, y + 0.03, z),
+      'belt-tensioner': new Vector3(x + 0.02, y - 0.05, z),
+    };
   }
 
   /** Registers every vehicle target with the interaction registry. */
@@ -760,8 +905,21 @@ export class Vehicle {
       t(`tie-rod-${side}`, `Tie rod, ${name}`, `tie-rod-${side}`, boxCollider(0.06, 0.06, 0.14));
       t(`jam-nut-${side}`, `Tie-rod jam nut, ${name}`, `jam-nut-${side}`, sphereCollider(0.035));
     }
+    for (const pos of WHEELS) {
+      const name = WHEEL_NAMES[pos];
+      t(`fender-${pos}`, `Fender lip, ${name}`, `fender-${pos}`, boxCollider(0.3, 0.1, 0.12));
+      t(`shock-${pos}`, `Shock or strut, ${name}`, `shock-${pos}`, boxCollider(0.12, 0.3, 0.12));
+      t(`bleeder-${pos}`, `Brake bleeder screw, ${name}`, `bleeder-${pos}`, sphereCollider(0.05));
+    }
+    t('belt-diagram', 'Belt routing diagram', 'belt-diagram', boxCollider(0.16, 0.05, 0.12));
     const ice = this.layout.ice;
     if (ice) {
+      t('pulley-crank', 'Crankshaft pulley', 'pulley-crank', sphereCollider(0.06));
+      t('pulley-idler', 'Idler pulley', 'pulley-idler', sphereCollider(0.04));
+      t('pulley-alternator', 'Alternator pulley', 'pulley-alternator', sphereCollider(0.05));
+      t('belt-tensioner', 'Belt tensioner', 'belt-tensioner', sphereCollider(0.04));
+      t('trans-dipstick', 'Transmission fluid dipstick', 'trans-dipstick', sphereCollider(0.05));
+      t('trans-check-plug', 'Transmission check plug', 'trans-check-plug', sphereCollider(0.05));
       // The OBD-II port sits under the dash; it is reached through the open driver's window.
       t('dlc', 'OBD-II port (under the dash)', 'dlc', boxCollider(0.22, 0.16, 0.12));
       t('gas-cap', 'Gas cap', 'gas-cap', boxCollider(0.16, 0.14, 0.08));
@@ -787,6 +945,9 @@ export class Vehicle {
       t('hv-test', 'High-voltage test points', 'hv-test', sphereCollider(0.04));
       t('cabin-filter', 'Cabin air filter cover', 'cabin-filter', boxCollider(0.22, 0.05, 0.16));
       t('charge-port', 'Charge port', 'charge-port', boxCollider(0.16, 0.12, 0.06));
+      t('dlc', 'OBD-II port (under the dash)', 'dlc', boxCollider(0.22, 0.16, 0.12));
+      t('ev-coolant-drain', 'Battery coolant drain', 'ev-coolant-drain', sphereCollider(0.05));
+      t('ev-hose-clamp', 'Coolant hose clamp', 'ev-hose-clamp', sphereCollider(0.04));
     }
     for (const pos of WHEELS) {
       const name = WHEEL_NAMES[pos];
@@ -925,6 +1086,8 @@ export class Vehicle {
       this.serviceDisconnect.position.set(...(this.layout.ev?.serviceDisconnect ?? [0, 0, 0]));
     }
     if (this.lockoutTag) this.lockoutTag.visible = false;
+    if (this.serpentine) this.serpentine.visible = true;
+    for (const pos of WHEELS) this.shockMist[pos].visible = false;
     this.fillCap.position.copy(this.fillCapHome);
     this.dipstick.position.copy(this.dipstickHome);
     this.root.position.set(0, 0, 0);

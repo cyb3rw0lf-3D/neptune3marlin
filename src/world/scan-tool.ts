@@ -38,6 +38,8 @@ export class ScanTool {
   connected = false;
   /** Pro scan tool upgrade: repair-information tips on the codes page. */
   pro = false;
+  /** Button labels a lesson renames for this run. */
+  labels: Partial<Record<ScanButton, string>> = {};
   onButton: (id: ScanButton) => void = () => {};
 
   constructor() {
@@ -71,6 +73,7 @@ export class ScanTool {
 
   reset(): void {
     this.screens = {};
+    this.labels = {};
     this.pages.codes = 'codes';
     this.pages.freeze = 'freeze';
     this.pages.live = 'live';
@@ -124,7 +127,7 @@ export class ScanTool {
       BUTTONS.forEach(([id, label], i) => {
         const x = 20 + (i % 2) * 145;
         const y = 250 + Math.floor(i / 2) * 64;
-        p.button(id, label, x, y, 135, 52, () => this.onButton(id), {
+        p.button(id, this.labels[id] ?? label, x, y, 135, 52, () => this.onButton(id), {
           size: 18,
           selected: (id === 'scan-read' && this.page === 'codes') || (id === 'scan-live' && this.page === 'live'),
         });

@@ -23,6 +23,11 @@ const PREFIX: Record<string, string> = {
   'coolant-flush': 'coolant.',
   alignment: 'alignment.',
   'ac-check': 'ac.',
+  'serpentine-belt': 'belt.',
+  'brake-flush': 'brakeflush.',
+  shocks: 'shocks.',
+  'trans-fluid': 'trans.',
+  'ev-coolant': 'evcool.',
 };
 
 /** Every line a customer can speak, with its voice: used to pre-record them. */

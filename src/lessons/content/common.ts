@@ -29,6 +29,16 @@ export const LIFT_NOT_LOCKED: MistakeDef = {
   consequence: 'car-drop',
 };
 
+/** For a step that takes a fitted tool off the car, raised if the student tries to finish first. */
+export function leftOn(lesson: string, tool: string, what: string): MistakeDef {
+  return {
+    code: `${lesson}.${tool}.left_on`,
+    kind: 'order',
+    label: `Tried to finish with the ${what} still on the car`,
+    explain: `Take the ${what} off first. A tool left on a car goes home with the customer, or falls off on the road. Everything you fit to the car comes off again before you call the job done.`,
+  };
+}
+
 const PPE_WHY =
   'Nitrile gloves keep used oil off your skin. It contains chemicals you should not soak into your hands every day.';
 
@@ -49,7 +59,9 @@ export function ppeStep(why = PPE_WHY): StepDef {
   };
 }
 
-export function liftSteps(): StepDef[] {
+/** Lift arms, raise and lock. `mid` stops at chest height, with the wheels and the hood both in reach. */
+export function liftSteps(height: 'full' | 'mid' = 'full'): StepDef[] {
+  const mid = height === 'mid';
   return [
     {
       id: 'arms',
@@ -67,15 +79,17 @@ export function liftSteps(): StepDef[] {
     },
     {
       id: 'raise',
-      label: 'Raise the car to working height',
-      say: 'Now hold the green UP button on the lift control until the car is at working height. Watch the car as it rises in case anything shifts.',
+      label: mid ? 'Raise the car to waist height' : 'Raise the car to working height',
+      say: mid
+        ? 'Hold the green UP button until the wheels are at waist height, so you can reach both the wheels and the hood. Watch the car as it rises in case anything shifts.'
+        : 'Now hold the green UP button on the lift control until the car is at working height. Watch the car as it rises in case anything shifts.',
       hint: 'The lift controls are on the post nearest the tool cart. Hold the UP button.',
       spot: 'lift-controls',
       item: HAND,
       targets: ['lift-up'],
-      gesture: { kind: 'hold', seconds: 2.5 },
+      gesture: { kind: 'hold', seconds: mid ? 1.5 : 2.5 },
       requires: ['arms'],
-      stepEffects: [{ fx: 'lift-raise' }],
+      stepEffects: [{ fx: 'lift-raise', ...(mid ? { arg: 'mid' } : {}) }],
     },
     {
       id: 'lock',

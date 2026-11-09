@@ -1,7 +1,7 @@
 import { pick } from '../../core/random';
 import type { VehicleSpec } from '../../vehicles/specs';
 import { HAND, type LessonDef, type MistakeDef, type StepDef } from '../engine/types';
-import { engineOffStep, exhaustStep, ppeStep, runEngineStep } from './common';
+import { engineOffStep, exhaustStep, leftOn, ppeStep, runEngineStep } from './common';
 
 export type AcFault = 'normal' | 'low' | 'blocked' | 'over' | 'fan';
 
@@ -136,6 +136,7 @@ function steps(vehicle: VehicleSpec, v: AcVariant): StepDef[] {
     gesture: { kind: 'press' },
     requires: ['ppe'],
     wrongItems: { 'coupler-high': SWAPPED, 'coupler-low': SWAPPED },
+    fit: true,
     effects: [{ fx: 'inspect' }],
   });
   if (!ev) out.push(exhaustStep());
@@ -157,6 +158,7 @@ function steps(vehicle: VehicleSpec, v: AcVariant): StepDef[] {
       gesture: { kind: 'press' },
       requires: ['run'],
       readings: { 'center-vent': { text: `Center vent: ${vent} °F` } },
+      fit: true,
       effects: [{ fx: 'inspect' }],
     },
     {
@@ -197,6 +199,19 @@ function steps(vehicle: VehicleSpec, v: AcVariant): StepDef[] {
       ev ? 'Switch the car off before you touch the couplers.' : 'Turn the engine off before you touch the couplers.',
     ),
     {
+      id: 'vent-out',
+      label: 'Take the vent thermometer out',
+      say: 'Pull the thermometer out of the center vent.',
+      hint: 'It is still in the center dash vent.',
+      spot: 'driver',
+      item: HAND,
+      targets: ['center-vent'],
+      gesture: { kind: 'press' },
+      skipMistake: leftOn('ac', 'thermometer', 'vent thermometer'),
+      unfit: ['vent-thermo'],
+      effects: [{ fx: 'inspect' }],
+    },
+    {
       id: 'disconnect',
       label: 'Disconnect the couplers',
       say: 'With everything off, unsnap both couplers and put the port caps back on.',
@@ -205,6 +220,8 @@ function steps(vehicle: VehicleSpec, v: AcVariant): StepDef[] {
       item: HAND,
       targets: ['ac-low-port', 'ac-high-port'],
       gesture: { kind: 'press' },
+      skipMistake: leftOn('ac', 'couplers', 'gauge couplers'),
+      unfit: ['coupler-low', 'coupler-high'],
       effects: [{ fx: 'inspect' }],
     },
     {
@@ -236,6 +253,7 @@ function steps(vehicle: VehicleSpec, v: AcVariant): StepDef[] {
       item: HAND,
       targets: ['hood-latch'],
       gesture: { kind: 'press' },
+      requires: ['vent-out', 'disconnect'],
       effects: [{ fx: 'hood-close' }],
     },
   );

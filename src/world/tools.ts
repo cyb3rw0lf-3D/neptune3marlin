@@ -385,6 +385,92 @@ export function buildItemModel(id: string): ItemModel {
         });
         col = boxCollider(0.06, 0.16, 0.05);
         break;
+      // --- Stage 7 ---
+      case 'belt-tool':
+        b.box(0.022, 0.022, 0.42, C.chrome, { p: [0, 0, 0.08] })
+          .box(0.03, 0.03, 0.12, C.black, { p: [0, 0, 0.25] })
+          .box(0.03, 0.03, 0.03, C.steel, { p: [0, 0, -0.14] });
+        col = boxCollider(0.06, 0.06, 0.48);
+        break;
+      case 'belt-new':
+        b.torus(0.08, 0.008, 0x111111, { r: [Math.PI / 2, 0, 0] }, 4, 14).box(0.07, 0.02, 0.002, C.white, {
+          p: [0, 0.01, 0.08],
+        });
+        col = boxCollider(0.2, 0.05, 0.2);
+        break;
+      case 'belt-gauge':
+        b.box(0.07, 0.005, 0.03, C.orange).box(0.02, 0.012, 0.03, C.orange, { p: [-0.03, 0.008, 0] });
+        col = boxCollider(0.09, 0.04, 0.05);
+        break;
+      case 'flashlight':
+        b.cyl(0.016, 0.016, 0.16, 8, C.black, { r: [Math.PI / 2, 0, 0] }).cyl(0.022, 0.02, 0.03, 8, C.safetyYellow, {
+          p: [0, 0, -0.09],
+          r: [Math.PI / 2, 0, 0],
+        });
+        col = boxCollider(0.05, 0.05, 0.2);
+        break;
+      case 'atf-funnel':
+        b.cyl(0.05, 0.012, 0.07, 10, C.safetyRed, { p: [0, 0.06, 0] }).cyl(0.006, 0.006, 0.22, 5, C.safetyRed, {
+          p: [0, -0.08, 0],
+        });
+        col = boxCollider(0.1, 0.3, 0.1);
+        break;
+      case 'atf-spec':
+      case 'atf-cvt':
+      case 'brake-fluid-dot4':
+      case 'brake-fluid-dot5':
+      case 'coolant-ev': {
+        const color = {
+          'atf-spec': 0xc4202a,
+          'atf-cvt': 0x2f8fd6,
+          'brake-fluid-dot4': C.safetyYellow,
+          'brake-fluid-dot5': 0x7d4cc9,
+          'coolant-ev': 0x2fb6a2,
+        }[id] as number;
+        const small = id.startsWith('brake');
+        const h = small ? 0.14 : 0.22;
+        b.box(small ? 0.07 : 0.1, h, small ? 0.05 : 0.07, color)
+          .cyl(0.016, 0.016, 0.03, 8, C.black, { p: [0, h / 2 + 0.015, 0] })
+          .box(small ? 0.06 : 0.08, 0.04, 0.002, C.white, { p: [0, 0, small ? 0.026 : 0.036] });
+        col = boxCollider(0.12, h + 0.05, 0.09);
+        break;
+      }
+      case 'atf-pump':
+        b.cyl(0.03, 0.03, 0.2, 8, C.darkSteel).cyl(0.006, 0.006, 0.3, 4, C.black, {
+          p: [0.04, 0, 0],
+          r: [0, 0, 0.3],
+        });
+        col = boxCollider(0.12, 0.26, 0.08);
+        break;
+      case 'moisture-strip':
+        b.box(0.012, 0.09, 0.002, C.white).box(0.012, 0.02, 0.003, 0x6bbf59, { p: [0, -0.03, 0] });
+        col = boxCollider(0.04, 0.12, 0.03);
+        break;
+      case 'fluid-extractor':
+        b.cyl(0.02, 0.02, 0.18, 8, 0xcfe9f5).cyl(0.004, 0.004, 0.14, 4, C.black, { p: [0, -0.15, 0] });
+        col = boxCollider(0.06, 0.3, 0.06);
+        break;
+      case 'bleed-bottle':
+        b.cyl(0.035, 0.035, 0.1, 10, 0xcfe9f5).cyl(0.004, 0.004, 0.3, 4, 0xbcd9e8, {
+          p: [0, 0.18, 0],
+          r: [0.3, 0, 0],
+        });
+        col = boxCollider(0.08, 0.16, 0.08);
+        break;
+      case 'wrench-8':
+        b.box(0.016, 0.006, 0.15, C.chrome).box(0.026, 0.008, 0.026, C.chrome, { p: [0, 0, -0.08] });
+        col = boxCollider(0.05, 0.03, 0.2);
+        break;
+      case 'tape-measure':
+        b.box(0.06, 0.06, 0.03, C.safetyYellow).box(0.02, 0.004, 0.03, C.chrome, { p: [0.04, -0.025, 0] });
+        col = boxCollider(0.08, 0.08, 0.05);
+        break;
+      case 'vacuum-fill':
+        b.cyl(0.03, 0.03, 0.08, 10, C.darkSteel)
+          .cyl(0.035, 0.035, 0.01, 12, C.white, { p: [0, 0.03, 0.035], r: [Math.PI / 2, 0, 0] })
+          .cyl(0.008, 0.008, 0.2, 4, C.black, { p: [0, -0.12, 0] });
+        col = boxCollider(0.1, 0.24, 0.1);
+        break;
       default:
         b.box(0.05, 0.05, 0.05, C.white);
         col = boxCollider(0.08, 0.08, 0.08);

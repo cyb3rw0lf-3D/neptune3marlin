@@ -12,7 +12,7 @@ import type {
   ShopView,
   SyncResponse,
 } from '../../src/net/protocol';
-import { defaultClassSettings } from '../../src/net/protocol';
+import { defaultClassSettings, LESSON_KEYS } from '../../src/net/protocol';
 import { cleanup, IDLE_LIMIT } from '../src/api';
 import { csvCell } from '../src/http';
 import worker from '../src/index';
@@ -273,8 +273,8 @@ describe('teacher views', () => {
     );
     expect(text.split('\r\n').filter(Boolean)).toHaveLength(5);
     const grades = await (await call('GET', '/export/grades.csv', { token: c.teacherKey })).text();
-    expect(grades).toContain(`Sam,95${','.repeat(11)},1`);
-    expect(grades).toContain(`Ana,,,60${','.repeat(9)},0`);
+    expect(grades).toContain(`Sam,95${','.repeat(LESSON_KEYS.length - 1)},1`);
+    expect(grades).toContain(`Ana,,,60${','.repeat(LESSON_KEYS.length - 3)},0`);
     expect((await call('GET', '/export/shop.csv', { token: c.teacherKey })).status).toBe(200);
     expect(csvCell('=HYPERLINK("x")')).toBe(`"'=HYPERLINK(""x"")"`);
     expect(csvCell('-1+2')).toBe(`'-1+2`);

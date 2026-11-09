@@ -16,6 +16,11 @@ export const LESSON_KEYS = [
   'coolant-flush',
   'alignment',
   'ac-check',
+  'serpentine-belt',
+  'brake-flush',
+  'shocks',
+  'trans-fluid',
+  'ev-coolant',
 ] as const;
 export type LessonKey = (typeof LESSON_KEYS)[number];
 
@@ -33,6 +38,11 @@ export const LESSON_TITLES: Record<LessonKey, string> = {
   'coolant-flush': 'Coolant Flush & Bleed',
   alignment: 'Wheel Alignment Check',
   'ac-check': 'A/C Performance Check',
+  'serpentine-belt': 'Serpentine Belt',
+  'brake-flush': 'Brake Fluid Flush',
+  shocks: 'Shocks & Struts Check',
+  'trans-fluid': 'Transmission Fluid Check',
+  'ev-coolant': 'EV Battery Coolant Service',
 };
 export const MODES = ['learn', 'practice', 'test'] as const;
 export type ModeKey = (typeof MODES)[number];

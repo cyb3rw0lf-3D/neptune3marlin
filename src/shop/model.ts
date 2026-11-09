@@ -6,10 +6,10 @@ export const TIER_NAMES = ['New shop', 'Neighborhood shop', 'Trusted shop', 'Dia
 /** What each tier opens up, shown on the menu. */
 export const TIER_UNLOCKS = [
   'Sedan wipers and bulbs, oil changes, tire service and inspections',
-  'Sedan brakes, battery and coolant jobs',
-  'Pickup jobs, and alignments (with the alignment rack)',
+  'Sedan brakes, battery, coolant, belt and shock jobs',
+  'Pickup jobs, brake flushes, transmission checks, and alignments (with the alignment rack)',
   'Check engine diagnosis, spark plugs and A/C',
-  'Wren EV jobs',
+  'Wren EV jobs, and EV coolant service (with the EV service cart)',
 ];
 export const MAX_REP = 100;
 export const START_MONEY = 500;
@@ -34,7 +34,7 @@ export const REP = {
   efficient: 1,
 } as const;
 
-export type UpgradeId = 'impact' | 'digital-torque' | 'pro-scan' | 'analyzer' | 'balancer' | 'rack';
+export type UpgradeId = 'impact' | 'digital-torque' | 'pro-scan' | 'analyzer' | 'balancer' | 'rack' | 'ev-cart';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -80,6 +80,12 @@ export const UPGRADES: UpgradeDef[] = [
     name: 'Alignment rack',
     price: 2200,
     effect: 'Lets the shop take wheel alignment jobs.',
+  },
+  {
+    id: 'ev-cart',
+    name: 'EV service cart',
+    price: 1800,
+    effect: 'Vacuum fill tool and EV coolant service equipment: lets the shop take EV battery coolant jobs.',
   },
 ];
 

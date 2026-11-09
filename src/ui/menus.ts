@@ -244,14 +244,18 @@ export class Menus {
       this.actions.classStatus() ?? 'Training: pick a lesson. Each one has Learn, Practice and Test runs.',
     );
     const settings = prof?.class?.settings ?? null;
-    // Twelve lessons: three columns of four cards.
+    // Three columns of cards; rows shrink to fit above the bottom buttons.
     const cols = 3;
     const cardW = (p.widthPx - 100 - (cols - 1) * 20) / cols;
+    const rows = Math.ceil(LESSONS.length / cols);
+    const pitch = Math.min(124, (p.heightPx - 104 - 16 - 150 + 12) / rows);
+    const cardH = pitch - 12;
+    const badgeY = cardH - 46;
     LESSONS.forEach((lesson, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
       const x = 50 + col * (cardW + 20);
-      const y = 150 + row * 124;
+      const y = 150 + row * pitch;
       const prog = this.save.progress(lesson.id);
       const locked = lessonLock(settings, lesson.id as LessonKey);
       const label = lesson.available ? (locked ? `🔒 ${lesson.title}` : lesson.title) : `${lesson.title} (soon)`;
@@ -261,7 +265,7 @@ export class Menus {
         x,
         y,
         cardW,
-        110,
+        cardH,
         () => {
           this.lesson = lesson;
           this.vehicle = lesson.vehicles.find((v) => v === 'sedan') ?? (lesson.vehicles[0] as VehicleId);
@@ -269,21 +273,21 @@ export class Menus {
         },
         { enabled: lesson.available && !locked },
       );
-      p.text(label, x + 18, y + 14, {
-        size: 27,
+      p.text(label, x + 18, y + 10, {
+        size: 26,
         bold: true,
         color: lesson.available && !locked ? UI.text : UI.disabled,
         maxWidth: cardW - 36,
       });
       if (locked) {
-        p.text('Locked by your teacher', x + 18, y + 66, { size: 22, color: UI.disabled });
+        p.text('Locked by your teacher', x + 18, y + badgeY + 4, { size: 22, color: UI.disabled });
       } else if (lesson.available) {
         const bw = (cardW - 36 - 16) / 3;
-        this.badge(p, x + 18, y + 62, 'LEARN', prog.learned ? 'done' : 'none', bw);
+        this.badge(p, x + 18, y + badgeY, 'LEARN', prog.learned ? 'done' : 'none', bw);
         this.badge(
           p,
           x + 18 + bw + 8,
-          y + 62,
+          y + badgeY,
           prog.practiceBest !== null ? `PRAC ${prog.practiceBest}` : 'PRACTICE',
           prog.practiceBest !== null ? (prog.practiceBest >= 80 ? 'done' : 'partial') : 'none',
           bw,
@@ -291,13 +295,13 @@ export class Menus {
         this.badge(
           p,
           x + 18 + 2 * (bw + 8),
-          y + 62,
+          y + badgeY,
           prog.passed ? 'PASSED' : prog.testBest !== null ? `TEST ${prog.testBest}` : 'TEST',
           prog.passed ? 'done' : prog.testBest !== null ? 'partial' : 'none',
           bw,
         );
       } else {
-        p.text('Coming in a later update', x + 24, y + 66, { size: 24, color: UI.disabled });
+        p.text('Coming in a later update', x + 24, y + badgeY + 4, { size: 24, color: UI.disabled });
       }
     });
     const by = p.heightPx - 104;

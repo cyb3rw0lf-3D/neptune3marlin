@@ -1,7 +1,7 @@
 import { pick } from '../../core/random';
 import type { VehicleSpec } from '../../vehicles/specs';
 import { HAND, type LessonDef, type MistakeDef, type StepDef } from '../engine/types';
-import { ppeStep } from './common';
+import { leftOn, ppeStep } from './common';
 
 export interface WiperVariant {
   /** The headlight bulb this car takes. */
@@ -105,6 +105,7 @@ function steps(vehicle: VehicleSpec, v: WiperVariant): StepDef[] {
       targets: ['wipers'],
       gesture: { kind: 'press' },
       skipMistake: WIPER_SNAP,
+      fit: true,
       effects: [{ fx: 'part-in' }],
     },
     {
@@ -139,6 +140,19 @@ function steps(vehicle: VehicleSpec, v: WiperVariant): StepDef[] {
       item: HAND,
       targets: ['wipers'],
       gesture: { kind: 'press' },
+      effects: [{ fx: 'inspect' }],
+    },
+    {
+      id: 'towel-off',
+      label: 'Take the towel off the windshield',
+      say: 'The arm is back on the glass, so take the towel off the windshield.',
+      hint: 'The towel is still under the wiper.',
+      spot: 'hood',
+      item: HAND,
+      targets: ['wipers'],
+      gesture: { kind: 'press' },
+      skipMistake: leftOn('wipers', 'towel', 'towel'),
+      unfit: ['towel'],
       effects: [{ fx: 'inspect' }],
     },
     {
@@ -245,6 +259,7 @@ function steps(vehicle: VehicleSpec, v: WiperVariant): StepDef[] {
       item: HAND,
       targets: ['hood-latch'],
       gesture: { kind: 'press' },
+      requires: ['towel-off'],
       effects: [{ fx: 'hood-close' }, { fx: 'lights-off' }],
     },
   ];
