@@ -76,6 +76,8 @@ export interface StageSetup {
   evKit?: boolean;
   /** Alignment console beside the lift, with its before and after screens. */
   align?: { before: string[]; after: string[] };
+  /** Scan tool button labels for this run. */
+  scanLabels?: Partial<Record<'scan-read' | 'scan-freeze' | 'scan-live' | 'scan-clear', string>>;
 }
 
 /** Tools that live on the cart. A lesson shows up to nine of them. */
@@ -123,6 +125,23 @@ export const ALL_ITEMS = [
   'coupler-low',
   'coupler-high',
   'vent-thermo',
+  'belt-tool',
+  'belt-new',
+  'belt-gauge',
+  'flashlight',
+  'atf-funnel',
+  'atf-spec',
+  'atf-cvt',
+  'atf-pump',
+  'moisture-strip',
+  'fluid-extractor',
+  'brake-fluid-dot4',
+  'brake-fluid-dot5',
+  'bleed-bottle',
+  'wrench-8',
+  'tape-measure',
+  'coolant-ev',
+  'vacuum-fill',
 ];
 
 /** Replacement parts that can sit on the cart's parts tray. */
@@ -747,6 +766,7 @@ export class World {
     // Scan tool on its hook, screens filled in for this run.
     this.scanTool.reset();
     if (stage.scan) this.scanTool.screens = { ...stage.scan };
+    this.scanTool.labels = { ...(stage.scanLabels ?? {}) };
     this.registry.setItemAvailable('scan-tool', !!stage.scan);
     this.registry.rehome('scan-tool', this.scene, SCAN_HOOK.clone());
     this.scanTool.root.rotation.set(0, -0.5, 0);
@@ -821,11 +841,11 @@ export class World {
 
   /** Plugs the scan tool into the OBD-II port and props it on the driver's door, screen out. */
   plugScanTool(): void {
-    const ice = this.vehicle.layout.ice;
-    if (!ice) return;
+    const dlc = this.vehicle.anchors.get('dlc')?.position;
+    if (!dlc) return;
     // Propped on the door sill right in front of the driver's door spot, screen out.
     const seat = this.vehicle.layout.at.driverSeat;
-    const at = new Vector3(seat[0] + 0.05, ice.dlc[1] + 0.12, ice.dlc[2] - 0.2);
+    const at = new Vector3(seat[0] + 0.05, dlc.y + 0.12, dlc.z - 0.2);
     this.registry.rehome('scan-tool', this.vehicle.root, at);
     this.scanTool.root.rotation.set(-0.2, Math.PI, 0);
     const item = this.registry.items.get('scan-tool');
@@ -1085,6 +1105,7 @@ export class World {
       ['left-front', 'Left front wheel', [fx + 0.1, 0, -side], [fx, 0.6, -L.trackZ]],
       ['left-rear', 'Left rear wheel', [rx - 0.1, 0, -side], [rx, 0.6, -L.trackZ]],
       ['under', 'Under the car', [x + plug[0] - 0.85, 0, 0.6], [x + plug[0] - 0.05, 1.6 + plug[1], 0]],
+      ['under-rear', 'Under the rear axle', [rx + 0.85, 0, 0.6], [rx + 0.05, 1.6 + L.wheelR, 0]],
       ['recycle', 'Oil recycling', [-3.9, 0, 3.0], [-4.7, 0.6, 3.7]],
       ['bench', 'Battery bench', [-3.4, 0, -4.4], [-3.4, 0.6, -5.5]],
       ['battery', 'Battery', [x + batt[0] + 0.15, 0, -L.halfWidth - 0.55], [x + batt[0], batt[1], batt[2]]],
@@ -1148,6 +1169,7 @@ export class World {
     }
     // Lesson-specific spots appear only when their gear is out.
     this.setSpotEnabled('under', this.lift.height > 1.2);
+    this.setSpotEnabled('under-rear', this.lift.height > 1.2);
     this.setSpotEnabled('jack', !!this.stage.jack);
     this.setSpotEnabled('donor', !!this.stage.donor);
     this.setSpotEnabled('battery', this.carX !== 0);
@@ -1238,6 +1260,7 @@ export class World {
     this.lift.setHeight(h);
     this.applyJackRaise();
     this.setSpotEnabled('under', this.lift.height > 1.2);
+    this.setSpotEnabled('under-rear', this.lift.height > 1.2);
     if (wasLow !== this.lift.height < 0.5) this.layoutSpots();
   }
 

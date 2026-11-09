@@ -14,7 +14,12 @@ export type LessonId =
   | 'wipers-bulbs'
   | 'coolant-flush'
   | 'alignment'
-  | 'ac-check';
+  | 'ac-check'
+  | 'serpentine-belt'
+  | 'brake-flush'
+  | 'shocks'
+  | 'trans-fluid'
+  | 'ev-coolant';
 
 export type Mode = 'learn' | 'practice' | 'test';
 export type VehicleId = 'sedan' | 'pickup' | 'ev';
@@ -196,7 +201,13 @@ export type FxName =
   | 'sd-out'
   | 'loto'
   | 'wait'
-  | 'align-read';
+  | 'align-read'
+  | 'belt-off'
+  | 'belt-on'
+  | 'pedal-hold'
+  | 'sd-in'
+  | 'loto-off'
+  | 'bounce';
 
 export interface Effect {
   fx: FxName;
@@ -272,6 +283,8 @@ export interface LessonStage {
   evKit?: boolean;
   /** Alignment console screens for this run. */
   align?: { before: string[]; after: string[] };
+  /** Scan tool button labels for this run (e.g. the EV coolant bleed routine). */
+  scanLabels?: Partial<Record<'scan-read' | 'scan-freeze' | 'scan-live' | 'scan-clear', string>>;
 }
 
 export interface LessonDef<V = unknown> {
