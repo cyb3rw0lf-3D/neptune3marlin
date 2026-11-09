@@ -2,6 +2,8 @@ import type { AcVariant } from '../lessons/content/ac-check';
 import type { BatteryVariant } from '../lessons/content/battery';
 import type { CoolantVariant } from '../lessons/content/coolant-flush';
 import type { ObdVariant } from '../lessons/content/obd2';
+import type { BeltVariant } from '../lessons/content/serpentine-belt';
+import type { TransVariant } from '../lessons/content/trans-fluid';
 import type { LessonId, VehicleId } from '../lessons/engine/types';
 import type { VehicleSpec } from '../vehicles/specs';
 import { laborLine, partLine, type QuoteLine, type ServiceId } from './price-book';
@@ -35,8 +37,8 @@ export interface JobTemplate {
   /** Parts and labor added once the work shows what the car needed. */
   partsAfter?: (variant: unknown, vehicle: VehicleSpec) => QuoteLine[];
   extras: ExtraId[];
-  /** A shop upgrade the job needs (the alignment rack). */
-  needs?: 'rack';
+  /** A shop upgrade the job needs (the alignment rack, the EV service cart). */
+  needs?: 'rack' | 'ev-cart';
 }
 
 const obd = (code: ObdVariant['code']) => (v: unknown) => (v as ObdVariant).code === code;
@@ -366,6 +368,91 @@ export const JOBS: JobTemplate[] = [
     match: (v) => (v as AcVariant).fault !== 'normal',
     extras: ['wipers'],
   },
+  {
+    id: 'belt-squeal',
+    lesson: 'serpentine-belt',
+    vehicles: ['sedan', 'pickup'],
+    customer: 'june',
+    title: 'Belt squeal',
+    complaint: 'There is a loud squeal from under the hood for the first minute every morning.',
+    questions: [
+      { q: 'Is it worse when it is cold or wet?', a: 'Yes! Rainy mornings are the worst.', helpful: true },
+      { q: 'Does it squeal when you turn on the A/C?', a: 'Now that you mention it, yes, it chirps.', helpful: true },
+      { q: 'Do you drive far to work?', a: 'About twenty minutes each way.', helpful: false },
+    ],
+    service: 'belt-replace',
+    partsAfter: (v) =>
+      (v as BeltVariant).weakTensioner
+        ? [laborLine('Belt tensioner replacement', 0.4), partLine('Belt tensioner', 62)]
+        : [],
+    extras: ['wipers'],
+  },
+  {
+    id: 'soft-pedal',
+    lesson: 'brake-flush',
+    vehicles: ['sedan', 'pickup', 'ev'],
+    customer: 'dale',
+    title: 'Brake fluid',
+    complaint: 'The brake pedal feels a bit soft, and the brakes faded on the long hill into town.',
+    questions: [
+      {
+        q: 'When was the brake fluid last changed?',
+        a: 'Changed? I did not know it ever needed changing.',
+        helpful: true,
+      },
+      { q: 'Does the pedal sink to the floor at a stop?', a: 'No, it just feels squishy at the top.', helpful: true },
+      { q: 'Do you tow a trailer?', a: 'Only my fishing boat, twice a year.', helpful: false },
+    ],
+    service: 'brake-flush',
+    extras: ['tires'],
+  },
+  {
+    id: 'bouncy-ride',
+    lesson: 'shocks',
+    vehicles: ['sedan', 'pickup', 'ev'],
+    customer: 'omar',
+    title: 'Bouncy ride',
+    complaint: 'The car keeps bouncing after bumps, and the nose dives when I brake hard.',
+    questions: [
+      { q: 'Did it start after hitting something?', a: 'No, it just got worse slowly.', helpful: true },
+      { q: 'Any clunks over bumps?', a: 'Maybe a little knock from one corner.', helpful: true },
+      { q: 'What do you use the car for?', a: 'Mostly the school run.', helpful: false },
+    ],
+    service: 'suspension-check',
+    extras: ['tires'],
+  },
+  {
+    id: 'slips-shifting',
+    lesson: 'trans-fluid',
+    vehicles: ['sedan', 'pickup'],
+    customer: 'theo',
+    title: 'Shifting slips',
+    complaint: 'When it shifts gears, the engine revs up for a second before it catches.',
+    questions: [
+      { q: 'Have you seen any red drips where you park?', a: 'A couple of small reddish spots, yes.', helpful: true },
+      { q: 'Is it worse when the car is warm?', a: 'Yes, worse after driving a while.', helpful: true },
+      { q: 'What color is the car?', a: 'You are looking at it!', helpful: false },
+    ],
+    service: 'trans-check',
+    partsAfter: (v) => ((v as TransVariant).low ? [partLine('ATF, 1 qt', 11)] : []),
+    extras: ['wipers'],
+  },
+  {
+    id: 'ev-coolant-due',
+    lesson: 'ev-coolant',
+    vehicles: ['ev'],
+    customer: 'rosa',
+    title: 'EV coolant',
+    complaint: 'The car showed a battery coolant warning, and the manual says the coolant service is due.',
+    questions: [
+      { q: 'Did the warning say anything about charging?', a: 'It said fast charging might be slower.', helpful: true },
+      { q: 'Have you seen any drips under the front?', a: 'Not that I have noticed.', helpful: true },
+      { q: 'How do you like driving electric?', a: 'Love it. So quiet!', helpful: false },
+    ],
+    service: 'ev-coolant-service',
+    needs: 'ev-cart',
+    extras: [],
+  },
 ];
 
 export function jobById(id: string): JobTemplate | undefined {
@@ -376,8 +463,8 @@ export function jobById(id: string): JobTemplate | undefined {
 export function tierNeeded(job: JobTemplate, vehicle: VehicleId): number {
   if (vehicle === 'ev') return 4;
   if (job.lesson === 'obd2' || job.lesson === 'spark-plugs' || job.lesson === 'ac-check') return 3;
-  if (vehicle === 'pickup' || job.lesson === 'alignment') return 2;
-  if (job.lesson === 'brakes' || job.lesson === 'battery' || job.lesson === 'coolant-flush') return 1;
+  if (vehicle === 'pickup' || ['alignment', 'brake-flush', 'trans-fluid'].includes(job.lesson)) return 2;
+  if (['brakes', 'battery', 'coolant-flush', 'serpentine-belt', 'shocks'].includes(job.lesson)) return 1;
   return 0;
 }
 
@@ -433,6 +520,19 @@ export const COMEBACK_NOTES: Record<string, string> = {
   'alignment.wheel.not_centered': 'The car drives straight now, but the steering wheel is crooked.',
   'alignment.jam.undertorque': 'The steering feels loose, and the car wanders again.',
   'ac.diagnosis.wrong': 'The A/C still blows warm in the afternoon.',
+  'belt.route.wrong': 'A loud squeal started, and then the battery light came on.',
+  'belt.tensioner.misjudged': 'The new belt is squealing already, and there is a grinding noise.',
+  'brakeflush.order.wrong': 'The brake pedal still feels soft.',
+  'brakeflush.reservoir.dry': 'The brake pedal feels even softer than before.',
+  'brakeflush.pedal.released': 'The brake pedal still feels spongy.',
+  'shocks.corner.wrong': 'Another shop found a leaking shock on a corner you said was fine.',
+  'shocks.height.misread': 'One corner of the car still sits low.',
+  'trans.fill.overfill': 'There is red fluid dripping under the car, and it shifts hard.',
+  'trans.fill.under': 'It still slips when it shifts.',
+  'trans.fluid.misread': 'The transmission is slipping worse now.',
+  'trans.fill.wrong_type': 'It shifts harshly now, and the transmission shop asked what fluid went in.',
+  'evcool.bleed.skipped': 'The car showed a battery temperature warning on a hot day.',
+  'evcool.vacuum.leak_ignored': 'There is a puddle under the front of the car, and the coolant warning is back.',
 };
 
 /** Found-it checks: the inspection item, the service it sells, and any upgrade that sale needs. */

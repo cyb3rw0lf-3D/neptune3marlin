@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createRng, matchingSeed } from '../../src/core/random';
 import { emptySave, SaveStore } from '../../src/core/save';
-import { lessonById } from '../../src/lessons/content';
+import { LESSONS, lessonById } from '../../src/lessons/content';
 import { LessonRunner } from '../../src/lessons/engine/runner';
-import type { MistakeRecord, RunResult, StepDef } from '../../src/lessons/engine/types';
+import type { MistakeDef, MistakeRecord, RunResult, StepDef } from '../../src/lessons/engine/types';
 import { applyOutcome, efficientSeconds, type JobInput, settleJob } from '../../src/shop/economy';
 import { applyUpgrades, planJob } from '../../src/shop/job-plan';
 import { COMEBACK_NOTES, JOBS, jobById, tierNeeded } from '../../src/shop/jobs';
@@ -11,6 +11,23 @@ import { CUSTOMERS, newShop, REP, START_MONEY, sanitizeShop, TIER_AT, tierFor } 
 import { HINT_COST, LABOR_RATE, quote, SERVICES, serviceLines } from '../../src/shop/price-book';
 import { availableJobs, daySheet, draftShift, type ShiftJob } from '../../src/shop/shift';
 import { VEHICLES } from '../../src/vehicles/specs';
+
+/** Every mistake a step can raise. */
+function mistakeDefs(step: StepDef): MistakeDef[] {
+  return [
+    step.skipMistake,
+    step.orderMistake,
+    step.wrongItem,
+    step.choice?.wrong,
+    step.tag?.wrong,
+    ...Object.values(step.choice?.wrongByOption ?? {}),
+    ...Object.values(step.tag?.wrongByOption ?? {}),
+    step.measure?.over,
+    step.measure?.under,
+    ...Object.values(step.wrongItems ?? {}),
+    ...Object.values(step.wrongTargets ?? {}),
+  ].filter((m): m is MistakeDef => !!m);
+}
 
 const run = (over: Partial<RunResult> = {}): RunResult => ({
   completed: true,
@@ -101,6 +118,34 @@ describe('reputation and tiers', () => {
     expect(availableJobs(4).some((j) => j.job.lesson === 'alignment')).toBe(false);
     expect(availableJobs(4, ['rack']).some((j) => j.job.lesson === 'alignment')).toBe(true);
     expect(availableJobs(1, ['rack']).some((j) => j.job.lesson === 'alignment')).toBe(false);
+  });
+
+  it('EV coolant jobs need the EV service cart and an EV-certified shop', () => {
+    expect(availableJobs(4).some((j) => j.job.lesson === 'ev-coolant')).toBe(false);
+    expect(availableJobs(4, ['ev-cart']).some((j) => j.job.lesson === 'ev-coolant')).toBe(true);
+    expect(availableJobs(3, ['ev-cart']).some((j) => j.job.lesson === 'ev-coolant')).toBe(false);
+  });
+
+  it('the Stage 7 jobs open at the right tiers', () => {
+    const at = (tier: number) => new Set(availableJobs(tier, ['rack', 'ev-cart']).map((j) => j.job.id));
+    expect(at(0).has('belt-squeal')).toBe(false);
+    expect(at(1).has('belt-squeal')).toBe(true);
+    expect(at(1).has('bouncy-ride')).toBe(true);
+    expect(at(1).has('soft-pedal')).toBe(false);
+    expect(at(2).has('soft-pedal')).toBe(true);
+    expect(at(2).has('slips-shifting')).toBe(true);
+  });
+
+  it('every comeback note belongs to a real mistake code', () => {
+    const codes = new Set<string>();
+    for (const lesson of LESSONS)
+      for (const vehicle of lesson.vehicles)
+        for (let seed = 1; seed <= 40; seed++) {
+          const spec = VEHICLES[vehicle];
+          for (const step of lesson.steps(spec, lesson.variant(createRng(seed), spec), 'us'))
+            for (const m of mistakeDefs(step)) codes.add(m.code);
+        }
+    for (const code of Object.keys(COMEBACK_NOTES)) expect(codes.has(code), code).toBe(true);
   });
 
   it('every job customer exists', () => {
