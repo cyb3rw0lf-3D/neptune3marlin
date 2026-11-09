@@ -344,11 +344,11 @@ export class Vehicle {
     const b = build();
     for (const pos of WHEELS) {
       const p = this.shockPosition(pos);
-      b.cyl(0.035, 0.035, 0.22, 8, C.black, { p: [p.x, p.y - 0.04, p.z] })
-        .cyl(0.012, 0.012, 0.12, 6, C.chrome, { p: [p.x, p.y + 0.12, p.z] })
-        .torus(0.045, 0.01, C.darkSteel, { p: [p.x, p.y + 0.18, p.z], r: [Math.PI / 2, 0, 0] }, 4, 10);
+      b.cyl(0.035, 0.035, 0.22, 8, C.black, { p: [p.x, p.y, p.z] })
+        .cyl(0.012, 0.012, 0.14, 6, C.chrome, { p: [p.x, p.y + 0.17, p.z] })
+        .torus(0.02, 0.008, C.darkSteel, { p: [p.x, p.y - 0.12, p.z], r: [0, 0, 0] }, 4, 8);
       const mist = build()
-        .box(0.074, 0.12, 0.074, 0x2a2418, { p: [p.x, p.y - 0.06, p.z] })
+        .box(0.074, 0.13, 0.074, 0x2a2418, { p: [p.x, p.y - 0.02, p.z] })
         .mesh(`shock-mist:${pos}`);
       mist.visible = false;
       this.root.add(mist);
@@ -808,13 +808,13 @@ export class Vehicle {
     }
   }
 
-  /** Inboard of each wheel, above the axle: where the shock or strut body is easiest to see. */
+  /** Inboard of each wheel: the lower shock or strut body, below the floor line where it can be seen from under the car. */
   private shockPosition(pos: WheelPos): Vector3 {
     const L = this.layout;
     const front = pos[0] === 'F';
     const side = pos[1] === 'R' ? 1 : -1;
     const x = (front ? L.wheelX.front : L.wheelX.rear) + (front ? -0.05 : 0.05);
-    return new Vector3(x, L.wheelR + 0.12, side * (L.trackZ - L.tireW / 2 - 0.09));
+    return new Vector3(x, 0.16, side * (L.trackZ - L.tireW / 2 - 0.09));
   }
 
   /** The automatic transmission dipstick, at the back of the engine bay (passenger side). */

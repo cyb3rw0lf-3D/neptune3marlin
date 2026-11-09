@@ -79,7 +79,7 @@ export function liftSteps(height: 'full' | 'mid' = 'full'): StepDef[] {
     },
     {
       id: 'raise',
-      label: mid ? 'Raise the car to chest height' : 'Raise the car to working height',
+      label: mid ? 'Raise the car to waist height' : 'Raise the car to working height',
       say: mid
         ? 'Hold the green UP button until the wheels are at waist height, so you can reach both the wheels and the hood. Watch the car as it rises in case anything shifts.'
         : 'Now hold the green UP button on the lift control until the car is at working height. Watch the car as it rises in case anything shifts.',

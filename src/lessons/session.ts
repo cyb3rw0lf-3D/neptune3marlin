@@ -94,8 +94,8 @@ const MODE_NAME: Record<Mode, string> = { learn: 'Learn', practice: 'Practice', 
  * Runs one lesson attempt in the world: sets the scene up, feeds actions to the
  * LessonRunner, applies effects, plays consequences, narrates and grades.
  */
-/** Chest height on the lift: wheels at waist level, and the hood still in reach. */
-const MID_HEIGHT = 0.6;
+/** Waist height on the lift: wheels easy to reach, and the hood still in reach. */
+const MID_HEIGHT = 0.4;
 
 /** How far a fitted tool sits out from its target along the target's local z (the axle, for wheels). */
 const FIT_OUTSET: Partial<Record<ItemId, number>> = { 'align-heads': 0.07 };
